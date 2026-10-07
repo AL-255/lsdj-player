@@ -74,15 +74,20 @@ NativeDisplayFrame::
     or a
     jr nz,.prepared_begin
     call WaterfallBegin
+    IF !DEF(NATIVE_LOW_RANGE)
     ldh a,[$ff90]
     or a
     call nz,NativeColorBegin
+    ENDC
     xor a
     ld [NativePrepareIndex],a
 .prepared_begin
     IF DEF(NATIVE_CONNECT_PITCH_BENDS)
         call NativeBendFrame
     ENDC
+    IF DEF(NATIVE_LOW_RANGE)
+    call NativeLowRangePoints
+    ELSE
     ldh a,[$ff90]
     or a
     jr z,.monochrome_points
@@ -94,6 +99,7 @@ NativeDisplayFrame::
     call WaterfallPixelPoint2
     call WaterfallPixelPoint3
 .points_ready
+    ENDC
     ; The DMG-compatible renderer uses one map row per slice. Four slices
     ; per frame finish all 12 clears and 18 rows before the eight-pixel wrap.
     ld b,(WaterfallClearCount + WaterfallMapCount + 7) / 8
@@ -151,6 +157,7 @@ NativeDisplayFrame::
 
 ; All four pens share a pixel column. Color pixels replace both bitplanes
 ; with the channel's palette index; OR would mix two channels into a third.
+IF !DEF(NATIVE_LOW_RANGE)
 NativeColorPoints:
     ld a,[WaterfallPixelPhase]
     ld e,a
@@ -181,6 +188,7 @@ NativeColorPoints:
 .next{d:channel}
     ENDR
     ret
+ENDC
 
 ; Scroll is foreground work. The engine's original VBlank handler has
 ; already scheduled audio, and music interrupts may preempt preparation.
@@ -206,14 +214,22 @@ NativeDisplayScroll::
     cp WaterfallClearCount + WaterfallMapCount
     jr c,.done
     ld b,0
-    ld c,87
+    IF DEF(NATIVE_LOW_RANGE)
+        ld c,127
+    ELSE
+        ld c,87
+    ENDC
     ld a,[WaterfallNextLCD]
     ld d,a
     ld a,[WaterfallNextHead]
     ld e,a
     jr .commit
 .fine
-    ld a,87
+    IF DEF(NATIVE_LOW_RANGE)
+        ld a,127
+    ELSE
+        ld a,87
+    ENDC
     sub b
     ld c,a
     ld a,[WaterfallLCD]
@@ -472,6 +488,9 @@ NativeSongInfoInit:
     ldh a,[$ff90]
     or a
     call nz,NativeColorInit
+    IF DEF(NATIVE_LOW_RANGE)
+        call NativeLowRangeInit
+    ENDC
     ret
 .copy
     ld a,[de]
@@ -612,6 +631,9 @@ NativeChannelGlyphs:
 
 IF DEF(NATIVE_CONNECT_PITCH_BENDS)
     INCLUDE "src/native/bend.asm"
+ENDC
+IF DEF(NATIVE_LOW_RANGE)
+    INCLUDE "src/native/low_range.asm"
 ENDC
 
 PUSHS

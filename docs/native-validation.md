@@ -218,3 +218,52 @@ Full results are in:
 
 - `build/audio-ab/native-color-optimized-verification/report.json`
 - `build/audio-ab/native-color-optimized-bend-verification/report.json`
+
+## Optional narrow lower pitch range
+
+`--low-range` combines the requested three display changes: omit NOI pixels,
+discard original pitch rows 0–71, and double rows 72–143 to fill the screen.
+The visible range is C1–B6, with B6 at the top. The plot narrows from 80 to
+40 pixels to reduce its tile allocation; vertical doubling alone would not
+free tiles. Original pitch samples remain available to the bend detector
+and CGB readouts, and all four audio channels continue playing. Optional
+bend connections clip at the upper boundary before their rows are doubled.
+
+The ring shrinks from twelve to seven columns (216 to 126 canvas tiles).
+Two additional tiles provide the enlarged keyboard, leaving **88 free tile
+slots / 1,408 bytes at bank-0 $8a80–$8fff**. CGB needs only PU1, PU2, and
+WAV in the plot, so one fixed palette replaces channel metadata, palette
+remapping, and attribute transfers. This also frees the former 216-byte
+bank-1 metadata region. Each map row now needs one short CGB DMA transfer.
+
+All 36 native tests pass. Five new tests exercise actual DMG and CGB pixels,
+boundary pitches, both directions of clipped bends, every tonal insertion
+order, all seven ring columns, and 1,200-frame scrolling. They inspect all
+18 map rows, the enlarged keyboard sprites, and canaries in every freed
+tile and the unused CGB metadata region. Noise audio trigger writes continue.
+Live-LCD full-height joins allow the 4,096-cycle audio timer to run with no
+observed interrupt-service gap over 4,300 CPU cycles. With the flag disabled,
+a rebuilt TRIAC bend-enabled ROM is byte-identical to commit `34d91bf`.
+
+The same read-only profiling method and seconds 8–20 described above compare
+this mode to `34d91bf`, with bends both off and on for all three songs:
+
+| Hardware | Reduction in display CPU cycles/update | Screen updates/s, bends enabled | Idle CPU, bends enabled |
+| --- | ---: | ---: | ---: |
+| CGB-E | 59.7–66.2% | 53.4–58.4 | 58.2–74.0% |
+| DMG-B | 16.4–19.6% | 26.3–53.6 | 24.5–40.3% |
+
+These are measured song intervals, not worst-case guarantees. DMG still
+spends most display time waiting for safe VRAM access. Evidence, commands,
+source/ROM hashes, and traces remain in `build/color-performance/`, with
+the summary at `low-range-comparison.json`. Locally generated test ROMs
+and screenshots are in `build/low-range/`.
+
+Fresh 20-second LSDj comparisons cover TRIAC, WOW, and KASHIWA on both
+models, with bends off and on. All twelve match startup timing and total
+song APU-write counts, and none reports the previous stack/memory warnings.
+**All twelve still fail strict PCM equality.** The display improvement
+does not resolve the existing native audio-equivalence issue. Reports:
+
+- `build/audio-ab/native-low-range-verification/report.json`
+- `build/audio-ab/native-low-range-bend-verification/report.json`

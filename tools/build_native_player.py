@@ -35,7 +35,7 @@ def engine_source(data,executed,bank,ranges):
     return '\n'.join(lines)+'\n'
 
 
-def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=None,lcd_delays=None,timer_state=None,*,connect_pitch_bends=False):
+def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=None,lcd_delays=None,timer_state=None,*,connect_pitch_bends=False,low_range=False):
     song_delays = song_delays or {'cgb':8220996, 'dmg':8547120}
     lcd_delays = lcd_delays or {'cgb':41700,'dmg':36960}
     timer_state = timer_state or {model:{'tima':tima,'tma':0x49,'tac':6,'if':0}
@@ -94,6 +94,13 @@ def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=
     waterfall=waterfall.replace('            ld a,72\n','            xor a\n') # remove retired CPU bar sprites
     waterfall=re.sub(r'WaterfallStatus::.*?(?=WaterfallCommit::)', 'WaterfallStatus::\nWaterfallBar::\n    ret\n\n',waterfall,flags=re.S)
     waterfall=waterfall.replace('        ld a,[hl]\n        or b','        call NativeRead\n        or b')
+    if low_range:
+        waterfall=waterfall.replace('REDEF WaterfallColumns EQU 11','REDEF WaterfallColumns EQU 6')
+        waterfall=waterfall.replace('((head + 10) % WaterfallRingColumns)',
+                                    '((head + WaterfallColumns - 1) % WaterfallRingColumns)')
+        waterfall=waterfall.replace('ld a,80 ; OAM X=screen X+8: keyboard72..78, divider79',
+                                    'ld a,120 ; narrow plot: mask112..118, divider119')
+        waterfall=waterfall.replace('ld a,87','ld a,127')
     ui=(ROOT/'src/exact_ui.asm').read_text().replace('ROM0[$0220]','ROMX[$4220], BANK[5]').replace('INCLUDE "src/waterfall.asm"',f'INCLUDE "{work / "waterfall.asm"}"')
     ui=re.sub(r'ASSERT ExactUIFontEnd <= \$[0-9a-fA-F]+','ASSERT ExactUIFontEnd <= $5800',ui)
     ui=ui.replace('ASSERT @ <= $1000','ASSERT @ <= $5800')
@@ -135,9 +142,11 @@ def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=
     (work/'display.asm').write_text(display)
     with (work/'ui.asm').open('a') as combined:combined.write(f'\nINCLUDE "{work / "display.asm"}"\n')
     objects=[]
-    flags=['-D','EXACT_WATERFALL=1','-D','EXACT_PIXEL_WATERFALL=1','-D','EXACT_DMG=1','-D','NATIVE_CHANNEL_COLORS=1','-D','WATERFALL_WIDTH=80','-D',f'EXACT_SONG_GLYPHS="{title}"','-D',f'NATIVE_PITCH_TABLES="{work / "pitch-tables.asm"}"']
+    flags=['-D','EXACT_WATERFALL=1','-D','EXACT_PIXEL_WATERFALL=1','-D','EXACT_DMG=1','-D','NATIVE_CHANNEL_COLORS=1','-D',f'WATERFALL_WIDTH={40 if low_range else 80}','-D',f'EXACT_SONG_GLYPHS="{title}"','-D',f'NATIVE_PITCH_TABLES="{work / "pitch-tables.asm"}"']
     if connect_pitch_bends:
         flags += ['-D','NATIVE_CONNECT_PITCH_BENDS=1']
+    if low_range:
+        flags += ['-D','NATIVE_LOW_RANGE=1']
     for source in sources:
         obj=work/(source.stem+'.o');subprocess.run(['rgbasm',*flags,'-o',str(obj),str(source)],cwd=ROOT,check=True);objects.append(obj)
     subprocess.run(['rgblink','-n',str(output.with_suffix('.sym')),'-m',str(output.with_suffix('.map')),'-o',str(output),*map(str,objects)],cwd=ROOT,check=True)
@@ -146,6 +155,14 @@ def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=
     manifest['lcd_delay_cpu_cycles']=lcd_delays.copy()
     manifest['initial_timer_state']={model:state.copy() for model,state in timer_state.items()}
     manifest['connect_pitch_bends']=bool(connect_pitch_bends)
+    manifest['low_range']=bool(low_range)
+    manifest['waterfall']={'width_pixels':40 if low_range else 80,
+                          'source_y_range':[72,143] if low_range else [0,143],
+                          'pixels_per_semitone':2 if low_range else 1,
+                          'plotted_channels':['PU1','PU2','WAV'] if low_range else ['PU1','PU2','WAV','NOI'],
+                          'canvas_tiles':126 if low_range else 216,
+                          'extra_keyboard_tiles':2 if low_range else 0,
+                          'cgb_metadata_bytes':0 if low_range else 216}
     manifest['cgb_channel_colors']={'PU1':'cyan','PU2':'pink','WAV':'green','NOI':'yellow'}
     output.with_suffix('.json').write_text(json.dumps(manifest,indent=2)+'\n');return manifest
 
@@ -210,13 +227,13 @@ def _timer_increment_count(initial,observed,tma):
     return 256-initial+observed-tma
 
 
-def build(rom_path,profile,snapshot_prefix,output,name='SONG',*,align_startup=False,runner=None,startup_traces=None,connect_pitch_bends=False):
+def build(rom_path,profile,snapshot_prefix,output,name='SONG',*,align_startup=False,runner=None,startup_traces=None,connect_pitch_bends=False,low_range=False):
     """Optionally align startup time, timer state, and initial LCD phase.
 
     Only pre-song hardware state and the LCD enable edge are used. No song
     writes or audio are consumed, and no playback events are scheduled.
     """
-    if not align_startup:return _build_once(rom_path,profile,snapshot_prefix,output,name,connect_pitch_bends=connect_pitch_bends)
+    if not align_startup:return _build_once(rom_path,profile,snapshot_prefix,output,name,connect_pitch_bends=connect_pitch_bends,low_range=low_range)
     output=Path(output).resolve()
     runner=Path(runner or ROOT/'build/sameboy-native-analysis').resolve()
     if not runner.is_file():raise ValueError(f'Startup alignment requires capture runner: {runner}')
@@ -230,7 +247,7 @@ def build(rom_path,profile,snapshot_prefix,output,name='SONG',*,align_startup=Fa
               'runner':str(runner),'target_ticks':targets,'target_io':target_io,
               'source_lcd_enable_ticks':lcd_targets,'passes':[],'aligned':False}
     for attempt in range(5):
-        manifest=_build_once(rom_path,profile,snapshot_prefix,output,name,delays,lcd_delays,timer_state,connect_pitch_bends=connect_pitch_bends)
+        manifest=_build_once(rom_path,profile,snapshot_prefix,output,name,delays,lcd_delays,timer_state,connect_pitch_bends=connect_pitch_bends,low_range=low_range)
         work=output.parent/(output.stem+'-native-data')/'startup-alignment'
         work.mkdir(exist_ok=True)
         def measure(model):
@@ -280,10 +297,11 @@ if __name__=='__main__':
     p.add_argument('--align-startup',action='store_true',help='Calibrate bootstrap entry to both source snapshot timestamps (does not imply audio equality)')
     p.add_argument('--runner',type=Path,default=ROOT/'build/sameboy-native-analysis')
     p.add_argument('--connect-pitch-bends',action='store_true',help='Draw vertical waterfall connections for continuous legato/pitch bends (default: discrete points)')
+    p.add_argument('--low-range',action='store_true',help='Hide NOI from the plot and show the lower six octaves at double height in a narrower 40-pixel waterfall')
     p.add_argument('--startup-trace-cgb',type=Path,help='Source trace containing FF40 writes before the CGB startup snapshot')
     p.add_argument('--startup-trace-dmg',type=Path,help='Source trace containing FF40 writes before the DMG startup snapshot')
     a=p.parse_args()
     if bool(a.startup_trace_cgb)!=bool(a.startup_trace_dmg):p.error('Supply both model startup traces together')
     traces={'cgb':a.startup_trace_cgb,'dmg':a.startup_trace_dmg} if a.startup_trace_cgb else None
     if traces and not a.align_startup:p.error('Startup traces require --align-startup')
-    print(json.dumps(build(a.rom,a.profile,a.snapshot_prefix,a.output,a.name,align_startup=a.align_startup,runner=a.runner,startup_traces=traces,connect_pitch_bends=a.connect_pitch_bends),indent=2))
+    print(json.dumps(build(a.rom,a.profile,a.snapshot_prefix,a.output,a.name,align_startup=a.align_startup,runner=a.runner,startup_traces=traces,connect_pitch_bends=a.connect_pitch_bends,low_range=a.low_range),indent=2))

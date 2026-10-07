@@ -83,6 +83,22 @@ Note events entirely between those samples cannot be reconstructed.
 The extra drawing remains interruptible and can reduce the display frame rate
 on busy songs. The same flag is available in `tools/verify_native_audio.py`.
 
+Add `--low-range` for one combined lower-cost display mode on DMG and CGB:
+hide NOI from the waterfall, show the original lower six octaves (C1–B6)
+at two pixels per semitone, and narrow the plot from 80 to 40 pixels.
+NOI audio and its CGB readout remain active. This option also works with
+`--connect-pitch-bends`; connections are clipped at the new range boundary.
+It is disabled by default and is available in the audio verifier too.
+
+The narrow ring uses 126 canvas tiles instead of 216. After two extra
+keyboard tiles, this frees **88 tile slots (1,408 VRAM bytes)**. CGB also
+eliminates the 216-byte channel metadata and uses fixed channel colors,
+skipping palette remapping and attribute updates. On the three validation
+songs this mode uses **60–66% fewer CGB display cycles per update** and
+**16–20% fewer on DMG**, compared with the optimized full-width view.
+These measurements cover seconds 8–20 with bend connections both off and on;
+screen updates still yield to audio. See the validation notes for details.
+
 Run the native regression checks with the local inputs above available:
 
 ```sh

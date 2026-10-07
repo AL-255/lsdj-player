@@ -29,6 +29,7 @@ NativeColorInit:
     jr nz,.palette
     ld a,1
     ldh [$ff4f],a
+    IF !DEF(NATIVE_LOW_RANGE)
     ld hl,NativeColorMetadata
     ld b,216
     xor a
@@ -36,19 +37,28 @@ NativeColorInit:
     ld [hl+],a
     dec b
     jr nz,.metadata
+    ENDC
     ld hl,$9800
     ld d,2
 .map
     ld e,18
 .row
-    ld b,11
+    IF DEF(NATIVE_LOW_RANGE)
+        ld b,6
+    ELSE
+        ld b,11
+    ENDC
     ld a,1
 .cell
     ld [hl+],a
     dec b
     jr nz,.cell
     ld a,l
-    add 21
+    IF DEF(NATIVE_LOW_RANGE)
+        add 26
+    ELSE
+        add 21
+    ENDC
     ld l,a
     jr nc,.next_row
     inc h
@@ -82,6 +92,7 @@ NativeColorInit:
     ldh [$ff4f],a
     ret
 
+IF !DEF(NATIVE_LOW_RANGE)
 ; Start of a new eight-pixel column. The next hidden column is offscreen.
 NativeColorBegin:
     push af
@@ -141,11 +152,66 @@ NativeColorMapRow:
     pop bc
     pop af
     ret
+ENDC
 
 ; HL=bank-0 low-plane address, B=pixel bit; channel is NativeColorChannel.
 ; Every entry preserves BC/DE/HL. Rendering never leaves bank 1 selected
 ; across an enabled interrupt, and long remaps remain audio-interruptible.
+; Low-range mode expects the first of two identical physical pixel rows.
 NativeColorPixel:
+    IF DEF(NATIVE_LOW_RANGE)
+    ; Without NOI the three tonal voices fit palette 1 permanently.
+    ; This removes all per-tile metadata, palette translation and map writes.
+    ld a,[NativeColorChannel]
+    cp 3
+    ret nc
+    push bc
+    push de
+    push hl
+    inc a
+    ld c,a ; fixed color codes also encode PU1 > PU2 > WAV priority
+    call NativeColorReadPair
+    ld a,d
+    and b
+    jr z,.low_zero
+    ld a,e
+    and b
+    jr z,.done ; existing PU1 always wins
+    ld a,c
+    cp 3
+    jr nc,.done ; existing WAV keeps an equal-priority pixel
+    jr .write
+.low_zero
+    ld a,e
+    and b
+    jr z,.write ; background
+    ld a,c
+    cp 2
+    jr nc,.done ; existing PU2 wins over PU2 or WAV
+.write
+    ld a,b
+    cpl
+    and e
+    bit 1,c
+    jr z,.high
+    or b
+.high
+    ld e,a
+    ld a,b
+    cpl
+    and d
+    bit 0,c
+    jr z,.low
+    or b
+.low
+    ld d,a
+    call NativeColorStoreDoublePair
+.done
+    pop hl
+    pop de
+    pop bc
+    ret
+    ELSE
     push bc
     push de
     push hl
@@ -269,7 +335,9 @@ NativeColorPixel:
     pop de
     pop bc
     ret
+    ENDC
 
+IF !DEF(NATIVE_LOW_RANGE)
 ; Convert a native canvas address into physical tile index 0..215.
 NativeColorTileIndex:
     ld a,l
@@ -451,6 +519,7 @@ NativeColorRemapSelectors:
     db 1,2, 5,6, 5,4, 6,4
     db 3,2, 5,4, 5,6, 4,6
     db 2,3, 4,5, 4,6, 5,6
+ENDC
 NativeColorPalettes:
     dw $2866,$7f68,$559f,$23d6 ; PU1, PU2, WAV
     dw $2866,$7f68,$559f,$1f3f ; PU1, PU2, NOI
@@ -482,6 +551,7 @@ NativeColorReadPair:
     ei
     jr .wait
 
+IF !DEF(NATIVE_LOW_RANGE)
 ; HL=low plane, D=low byte, E=high byte. Preserves BC, DE and HL.
 NativeColorStorePair:
 .wait
@@ -499,3 +569,33 @@ NativeColorStorePair:
 .busy
     ei
     jr .wait
+ENDC
+
+IF DEF(NATIVE_LOW_RANGE)
+; Low-range pixels occupy two identical physical rows. HL addresses the
+; first row; fixed colors let one read/priority decision update both rows.
+; The fourth store remains within the CGB mode-2 safety window, and HL is
+; restored before audio interrupts resume. BC/DE/HL are preserved.
+NativeColorStoreDoublePair:
+.wait
+    di
+    ldh a,[$ff41]
+    and 2
+    jr nz,.busy
+    ld a,d
+    ld [hl+],a
+    ld a,e
+    ld [hl+],a
+    ld a,d
+    ld [hl+],a
+    ld a,e
+    ld [hl],a
+    dec hl
+    dec hl
+    dec hl
+    ei
+    ret
+.busy
+    ei
+    jr .wait
+ENDC

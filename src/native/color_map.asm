@@ -66,11 +66,40 @@ NativeColorClearSlice:
     ret
 
 ; A=row 0..17. Copies tile numbers and matching palette attributes together.
+; Low-range mode keeps fixed attributes and needs only the tile-number DMA.
 NativeColorPrepareRow:
     push af
     push bc
     push de
     push hl
+    IF DEF(NATIVE_LOW_RANGE)
+    ; All three tonal voices use the same fixed palette. Both maps retain
+    ; their initialized attributes; only the next row of tile IDs moves.
+    ld b,a
+    ld l,a
+    ld h,0
+    REPT 4
+        add hl,hl
+    ENDR
+    ld a,[WaterfallMapSource]
+    ld e,a
+    ld a,[WaterfallMapSource + 1]
+    ld d,a
+    add hl,de
+    push hl
+    ld l,b
+    ld h,0
+    REPT 5
+        add hl,hl
+    ENDR
+    ld a,[WaterfallMapDestHigh]
+    add h
+    ld d,a
+    ld e,l
+    pop hl
+    ld c,0
+    call NativeColorTransferRow
+    ELSE
     ld [NativeColorRows],a
     ld l,a
     ld h,0
@@ -122,6 +151,7 @@ NativeColorPrepareRow:
     ld hl,NativeColorRowBuffer
     inc c
     call NativeColorTransferRow
+    ENDC
     pop hl
     pop de
     pop bc

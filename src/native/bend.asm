@@ -161,6 +161,19 @@ NativeBendSpan:
     ld b,c
     ld c,a
 .ordered
+    IF DEF(NATIVE_LOW_RANGE)
+        ; Clip in the original pitch coordinates before doubling rows.
+        ld a,c
+        sub 72
+        ret c
+        ld c,a
+        ld a,b
+        sub 72
+        jr nc,.lower_ready
+        xor a
+.lower_ready
+        ld b,a
+    ENDC
     ld a,c
     sub b
     inc a
@@ -186,6 +199,9 @@ NativeBendSpan:
     ld l,a
     ld h,0
     add hl,hl
+    IF DEF(NATIVE_LOW_RANGE)
+        add hl,hl
+    ENDC
     add hl,de
     IF DEF(NATIVE_CHANNEL_COLORS)
         ldh a,[$ff90]
@@ -196,11 +212,19 @@ NativeBendSpan:
     ; Each read/store waits with IRQs available and masks only its own VRAM
     ; access. Audio may stretch rendering across frames; the existing frame
     ; scheduler then defers scrolling and drops redundant screen updates.
-    call NativeRead
-    or b
-    call NativeStore
+    IF DEF(NATIVE_LOW_RANGE)
+        call NativeLowRangeMonochromePixel
+    ELSE
+        call NativeRead
+        or b
+        call NativeStore
+    ENDC
     inc hl
     inc hl
+    IF DEF(NATIVE_LOW_RANGE)
+        inc hl
+        inc hl
+    ENDC
     dec c
     jr nz,.pixel
     ret
@@ -209,6 +233,10 @@ NativeBendSpan:
         call NativeColorPixel
         inc hl
         inc hl
+        IF DEF(NATIVE_LOW_RANGE)
+            inc hl
+            inc hl
+        ENDC
         dec c
         jr nz,.color_pixel
         ret

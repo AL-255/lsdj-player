@@ -165,7 +165,7 @@ def run(command: list[str], stem: Path) -> dict:
 
 
 def verify_case(case: dict, runner: Path, output: Path, seconds: float,
-                rate: int, native_rom: Path | None = None, *, connect_pitch_bends: bool = False) -> dict:
+                rate: int, native_rom: Path | None = None, *, connect_pitch_bends: bool = False, low_range: bool = False) -> dict:
     directory = output / case['id'].replace(':', '-track-')
     directory.mkdir(parents=True, exist_ok=True)
     inputs = {key: Path(case[key]).resolve() for key in ('reference_rom', 'prepared_save')}
@@ -213,6 +213,8 @@ def verify_case(case: dict, runner: Path, output: Path, seconds: float,
                          '--startup-trace-dmg', str(directory/'dmg-reference.tsv')]
         if connect_pitch_bends:
             build_command += ['--connect-pitch-bends']
+        if low_range:
+            build_command += ['--low-range']
         build_metadata = run(build_command, directory/'build')
     else:
         build_metadata = json.loads(native_rom.with_suffix('.json').read_text())
@@ -266,13 +268,14 @@ def main() -> int:
     parser.add_argument('--sample-rate', type=int, default=48000)
     parser.add_argument('--native-rom', type=Path, help='Verify this prebuilt native ROM against exactly one selected case')
     parser.add_argument('--connect-pitch-bends', action='store_true', help='Build the optional legato/pitch-bend waterfall renderer')
+    parser.add_argument('--low-range', action='store_true', help='Build the narrow lower-range waterfall with doubled notes and no NOI plot')
     args = parser.parse_args()
     cases = [case for case in json.loads(args.cases.read_text())['cases']
              if any(fnmatch.fnmatchcase(case['id'], pattern) for pattern in (args.match or ['triac/*']))]
     if not cases or (args.native_rom and len(cases) != 1):
         parser.error('Select at least one case, or exactly one with --native-rom')
-    if args.native_rom and args.connect_pitch_bends:
-        parser.error('--connect-pitch-bends builds a new ROM; omit it when checking --native-rom')
+    if args.native_rom and (args.connect_pitch_bends or args.low_range):
+        parser.error('Display build flags build a new ROM; omit them when checking --native-rom')
     args.output = args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=True)
     runner = args.runner.resolve()
@@ -282,17 +285,19 @@ def main() -> int:
                   recorded_seconds_from_reset=args.seconds, sample_rate=args.sample_rate,
                   runner=str(runner), runner_sha256=runner_hash,
                   connect_pitch_bends=args.connect_pitch_bends,
+                  low_range=args.low_range,
                   runner_build=json.loads(build_path.read_text()) if build_path.exists() else None,
                   build_source_sha256={str(path.relative_to(ROOT)): sha256(path) for path in
                       (ROOT/'tools/build_native_player.py', ROOT/'tools/native_delay.py',
                        ROOT/'src/native/boot.asm', ROOT/'src/native/display.asm',
                        ROOT/'src/native/bend.asm', ROOT/'src/native/color.asm',
                        ROOT/'src/native/color_map.asm',
+                       ROOT/'src/native/low_range.asm',
                        ROOT/'src/waterfall.asm', ROOT/'src/exact_ui.asm')}, cases=[])
     for case in cases:
         result = verify_case(case, runner, args.output, args.seconds, args.sample_rate,
                              args.native_rom.resolve() if args.native_rom else None,
-                             connect_pitch_bends=args.connect_pitch_bends)
+                             connect_pitch_bends=args.connect_pitch_bends, low_range=args.low_range)
         report['cases'].append(result)
         all_models = [model for entry in report['cases'] for model in entry['models']]
         report['summary'] = dict(comparisons=len(all_models), bit_exact=sum(model['bit_exact'] for model in all_models),
