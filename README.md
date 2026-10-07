@@ -59,7 +59,14 @@ the ROM.
 
 Audio interrupts take priority over the display. A late screen update holds the
 previous frame. DMG omits channel text to reduce rendering work; CGB displays
-PU1, PU2, WAV, and NOI.
+PU1, PU2, WAV, and NOI. CGB waterfall pixels, bend connections, and channel
+labels use cyan for PU1, pink for PU2, green for WAV, and yellow for NOI.
+DMG retains the monochrome waterfall.
+
+CGB allows three note colors plus the background in each 8×8 tile. If a
+tile's history contains all four channels, NOI is hidden in that tile until
+the tile scrolls out and is reused; the other channel colors stay exact.
+At an identical pixel, priority is PU1, then PU2, WAV, and NOI.
 
 Add `--connect-pitch-bends` to the build command to connect successive legato
 and pitch-bend points with vertical lines in the waterfall. This optional

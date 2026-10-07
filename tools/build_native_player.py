@@ -135,7 +135,7 @@ def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=
     (work/'display.asm').write_text(display)
     with (work/'ui.asm').open('a') as combined:combined.write(f'\nINCLUDE "{work / "display.asm"}"\n')
     objects=[]
-    flags=['-D','EXACT_WATERFALL=1','-D','EXACT_PIXEL_WATERFALL=1','-D','EXACT_DMG=1','-D','WATERFALL_WIDTH=80','-D',f'EXACT_SONG_GLYPHS="{title}"','-D',f'NATIVE_PITCH_TABLES="{work / "pitch-tables.asm"}"']
+    flags=['-D','EXACT_WATERFALL=1','-D','EXACT_PIXEL_WATERFALL=1','-D','EXACT_DMG=1','-D','NATIVE_CHANNEL_COLORS=1','-D','WATERFALL_WIDTH=80','-D',f'EXACT_SONG_GLYPHS="{title}"','-D',f'NATIVE_PITCH_TABLES="{work / "pitch-tables.asm"}"']
     if connect_pitch_bends:
         flags += ['-D','NATIVE_CONNECT_PITCH_BENDS=1']
     for source in sources:
@@ -146,6 +146,7 @@ def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=
     manifest['lcd_delay_cpu_cycles']=lcd_delays.copy()
     manifest['initial_timer_state']={model:state.copy() for model,state in timer_state.items()}
     manifest['connect_pitch_bends']=bool(connect_pitch_bends)
+    manifest['cgb_channel_colors']={'PU1':'cyan','PU2':'pink','WAV':'green','NOI':'yellow'}
     output.with_suffix('.json').write_text(json.dumps(manifest,indent=2)+'\n');return manifest
 
 

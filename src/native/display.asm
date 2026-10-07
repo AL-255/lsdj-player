@@ -1,6 +1,6 @@
 ; Four live oscillator pens. Read the interpreter's post-effect frequencies,
 ; not a precomputed pitch trace. Rendering and hidden-column preparation run
-; once per LCD frame and retain the existing monochrome/SGB screen design.
+; once per LCD frame. CGB colors identify channels; DMG stays monochrome.
 DEF NativeFrameReady EQU $cc01
 
 SECTION "Native live display", ROMX, BANK[5]
@@ -70,16 +70,26 @@ NativeDisplayFrame::
     or a
     jr nz,.prepared_begin
     call WaterfallBegin
+    ldh a,[$ff90]
+    or a
+    call nz,NativeColorBegin
     xor a
     ld [NativePrepareIndex],a
 .prepared_begin
     IF DEF(NATIVE_CONNECT_PITCH_BENDS)
         call NativeBendFrame
     ENDC
+    ldh a,[$ff90]
+    or a
+    jr z,.monochrome_points
+    call NativeColorPoints
+    jr .points_ready
+.monochrome_points
     call WaterfallPixelPoint0
     call WaterfallPixelPoint1
     call WaterfallPixelPoint2
     call WaterfallPixelPoint3
+.points_ready
     ; The DMG-compatible renderer uses one map row per slice. Four slices
     ; per frame finish all 12 clears and 18 rows before the eight-pixel wrap.
     ld b,(WaterfallClearCount + WaterfallMapCount + 7) / 8
@@ -100,6 +110,13 @@ NativeDisplayFrame::
     push de
     jp hl
 .slice_return
+    ldh a,[$ff90]
+    or a
+    jr z,.slice_progress
+    ld a,[NativePrepareIndex]
+    sub WaterfallClearCount
+    call nc,NativeColorMapRow
+.slice_progress
     ld hl,NativePrepareIndex
     inc [hl]
 .slice_done
@@ -118,6 +135,39 @@ NativeDisplayFrame::
     pop de
     pop bc
     pop af
+    ret
+
+; All four pens share a pixel column. Color pixels replace both bitplanes
+; with the channel's palette index; OR would mix two channels into a third.
+NativeColorPoints:
+    ld a,[WaterfallPixelPhase]
+    ld e,a
+    ld d,0
+    ld hl,WaterfallPixelMasks
+    add hl,de
+    ld b,[hl]
+    ld a,[WaterfallHead]
+    add a,a
+    ld e,a
+    ld hl,WaterfallPixelPointers
+    add hl,de
+    ld a,[hl+]
+    ld d,[hl]
+    ld e,a
+    FOR channel,4
+        ld a,[WaterfallActive]
+        bit channel,a
+        jr z,.next{d:channel}
+        ld a,channel
+        ld [NativeColorChannel],a
+        ld a,[WaterfallPitchY + channel]
+        ld l,a
+        ld h,0
+        add hl,hl
+        add hl,de
+        call NativeColorPixel
+.next{d:channel}
+    ENDR
     ret
 
 ; Scroll is foreground work. The engine's original VBlank handler has
@@ -388,6 +438,9 @@ NativeSongInfoInit:
     ld a,24
 .last
     ld [hl],a
+    ldh a,[$ff90]
+    or a
+    call nz,NativeColorInit
     ret
 .copy
     ld a,[de]
@@ -501,3 +554,8 @@ NativeChannelGlyphs:
 IF DEF(NATIVE_CONNECT_PITCH_BENDS)
     INCLUDE "src/native/bend.asm"
 ENDC
+
+PUSHS
+SECTION "Native channel colors", ROMX, BANK[5]
+INCLUDE "src/native/color.asm"
+POPS

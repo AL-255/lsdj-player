@@ -131,3 +131,35 @@ except WOW on DMG, which first differs at 256,225. The enabled renderer can
 affect the remaining interrupt timing differences; it is not evidence of
 bit-exact playback. Full results and source/ROM hashes are in
 `build/audio-ab/native-bend-verification/report.json`.
+
+## CGB channel colors
+
+CGB now assigns cyan to PU1, pink to PU2, green to WAV, and yellow to NOI.
+Channel labels and optional bend connections use the same colors. DMG keeps
+the monochrome pixel renderer and omits channel labels.
+
+A CGB background tile can hold three note colors plus its background.
+Four palettes cover the possible three-channel subsets. When a tile's
+palette changes, its existing pixel indices are translated to preserve
+channel identity. If all four channels enter one tile, NOI is removed until
+that tile is recycled, as requested. Exact pixel overlaps also prioritize
+PU1, PU2, WAV, then NOI. Both scrolling maps receive matching attributes,
+and reused columns clear their channel metadata.
+
+All 26 native tests pass. Six new SameBoy tests inspect actual CGB pixels,
+all channel insertion and overlap orders, palette changes on both maps,
+column reuse, matching labels, and colored bend spans. A live-LCD stress
+test confirms audio interrupts continue during three full-height colored
+spans, with no service gap exceeding 4,300 CPU cycles for a 4,096-cycle
+timer. Every observed interrupt sees VRAM bank 0 restored. The existing
+1,200-frame tests still cover all ring positions, both screen halves,
+OAM preservation, and the unchanged monochrome bitplanes on DMG.
+
+Fresh 20-second comparisons cover TRIAC, WOW, and KASHIWA on both models,
+with bend connections disabled and enabled. All twelve match startup
+timing and total song APU-write counts, but none passes strict PCM equality.
+The color renderer changes foreground/interrupt timing and does not resolve
+the existing audio-equivalence failure. Reports with source and ROM hashes:
+
+- `build/audio-ab/native-color-verification/report.json`
+- `build/audio-ab/native-color-bend-verification/report.json`

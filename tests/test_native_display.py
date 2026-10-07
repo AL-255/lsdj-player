@@ -45,7 +45,7 @@ class NativeDisplayTests(unittest.TestCase):
             rows = (0, 8, 9, 17)
             columns = (0, 10)
             note_addresses = (0x9915, 0x9955, 0x9995, 0x99d5)
-            probes = [0xff40, 0xcc26, 0xcc00, *note_addresses] + [
+            probes = [0xff40, 0xff4f, 0xcc26, 0xcc00, *note_addresses] + [
                 base + row * 32 + column
                 for base in (0x9800, 0x9c00) for row in rows for column in columns
             ]
@@ -70,9 +70,14 @@ class NativeDisplayTests(unittest.TestCase):
                     heads = set()
                     swaps = 0
                     note_updates = 0
+                    vram_bank = 0
                     for write in writes:
                         address = int(write["address"], 16)
                         value = int(write["value"], 16)
+                        if address == 0xff4f and model == "cgb":
+                            vram_bank = value & 1
+                        if 0x8000 <= address < 0xa000 and vram_bank:
+                            continue # CGB attributes share the tile-number addresses.
                         memory[address] = value
                         if address == 0xcc00 and value:
                             started = True
@@ -117,10 +122,14 @@ class NativeDisplayTests(unittest.TestCase):
                     self.assertEqual(actual_memory[0xfe00:0xfea0], expected_oam)
                     if model == "dmg":
                         self.assertEqual(note_updates, 0)
+                        self.assertFalse(any(actual_memory[0x8281:0x9000:2]),
+                                         "DMG must keep its single-plane monochrome pixels")
                         for address in (0x9911, 0x9951, 0x9991, 0x99d1):
                             self.assertEqual(actual_memory[address:address + 8], bytes(8))
                     else:
                         self.assertGreater(note_updates, 0)
+                        self.assertTrue(any(actual_memory[0x8281:0x9000:2]),
+                                        "CGB channel colors must use both tile bitplanes")
                         for address, label in ((0x9911, (6, 2, 14)), (0x9951, (6, 2, 15)),
                                                (0x9991, (0, 8, 1)), (0x99d1, (2, 3, 4))):
                             self.assertEqual(actual_memory[address:address + 3], bytes(label))

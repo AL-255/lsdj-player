@@ -133,6 +133,10 @@ NativeBendFrame:
         ld b,a
         ld a,[WaterfallPitchY + channel]
         ld c,a
+        IF DEF(NATIVE_CHANNEL_COLORS)
+            ld a,channel
+            ld [NativeColorChannel],a
+        ENDC
         call NativeBendSpan
 .point{d:channel}
         ld a,[WaterfallPitchY + channel]
@@ -183,6 +187,11 @@ NativeBendSpan:
     ld h,0
     add hl,hl
     add hl,de
+    IF DEF(NATIVE_CHANNEL_COLORS)
+        ldh a,[$ff90]
+        or a
+        jr nz,.color_pixel
+    ENDC
 .pixel
     ; Each read/store waits with IRQs available and masks only its own VRAM
     ; access. Audio may stretch rendering across frames; the existing frame
@@ -195,3 +204,12 @@ NativeBendSpan:
     dec c
     jr nz,.pixel
     ret
+    IF DEF(NATIVE_CHANNEL_COLORS)
+.color_pixel
+        call NativeColorPixel
+        inc hl
+        inc hl
+        dec c
+        jr nz,.color_pixel
+        ret
+    ENDC
