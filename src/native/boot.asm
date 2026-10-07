@@ -117,11 +117,16 @@ NativeStart::
     ldh [$ffff],a
     xor a
     ld [$c56c],a
-.loop
+    ld a,[NativeHardware]
+    cp $11
+    jp z,NativeLoopCGB
+    jp NativeLoopDMG
+MACRO NativeMainLoop
+NativeLoop\1::
     call $158c ; original HALT/NOP/RET idle primitive
     ld a,[$c56c]
     or a
-    jr z,.loop
+    jr z,NativeLoop\1
     di
     xor a
     ld [$c56c],a ; consume the tracker's watchdog frame counter
@@ -130,13 +135,17 @@ NativeStart::
     ldh [$ff8e],a
     ei
     call NativeDisplayScroll
-    call NativeDisplayFrame
+    call NativeDisplayFrame\1
     di
     ld a,2
     ld [$2000],a
     ldh [$ff8e],a
     ei
-    jr .loop
+    jr NativeLoop\1
+
+ENDM
+    NativeMainLoop DMG
+    NativeMainLoop CGB
 
 NativeCopy:
     ld a,b

@@ -1,6 +1,6 @@
-; CGB prepares each inactive map row with two short general-DMA blocks.
-; The 11 visible cells fit a 16-byte block; columns 11..15 are offscreen.
-; The row buffer lies below the retired font IRQ scratch at $cc80.
+; CGB clears recycled pattern columns with short general-DMA blocks.
+; Hardware SCX scrolls the BG; preparation updates only its incoming map
+; column. The zero buffer lies below the retired font IRQ scratch at $cc80.
 DEF NativeColorRowBuffer EQU $cc70
 ASSERT LOW(NativeColorRowBuffer) % 16 == 0
 ASSERT NativeColorRowBuffer + 16 <= $cc80
@@ -65,92 +65,42 @@ NativeColorClearSlice:
     pop af
     ret
 
-; A=row 0..17. Copies tile numbers and matching palette attributes together.
-; Low-range mode keeps fixed attributes and needs only the tile-number DMA.
+; A=row 0..17. Point the incoming BG-map cell at the recycled physical
+; column. Its metadata has been cleared and pixels are still drawn only
+; into the preceding column, so the initial palette is always 1.
 NativeColorPrepareRow:
     push af
     push bc
     push de
     push hl
-    IF DEF(NATIVE_LOW_RANGE)
-    ; All three tonal voices use the same fixed palette. Both maps retain
-    ; their initialized attributes; only the next row of tile IDs moves.
     ld b,a
-    ld l,a
-    ld h,0
-    REPT 4
-        add hl,hl
-    ENDR
-    ld a,[WaterfallMapSource]
-    ld e,a
-    ld a,[WaterfallMapSource + 1]
-    ld d,a
-    add hl,de
-    push hl
+    ; Unsigned tile ID is the low byte of (column address >> 4) + row.
+    ld a,[WaterfallColumnBase]
+    swap a
+    and $0f
+    ld c,a
+    ld a,[WaterfallColumnBase + 1]
+    swap a
+    and $f0
+    or c
+    add b
+    ld c,a
     ld l,b
     ld h,0
     REPT 5
         add hl,hl
     ENDR
-    ld a,[WaterfallMapDestHigh]
+    ld a,[NativeMapColumn]
+    add l
+    ld l,a
+    ld a,$98
     add h
-    ld d,a
-    ld e,l
-    pop hl
-    ld c,0
-    call NativeColorTransferRow
-    ELSE
-    ld [NativeColorRows],a
-    ld l,a
-    ld h,0
-    REPT 4
-        add hl,hl
-    ENDR
-    ld a,[WaterfallMapSource]
-    ld e,a
-    ld a,[WaterfallMapSource + 1]
-    ld d,a
-    add hl,de
-    push hl
-    ld b,11
-    ld c,LOW(NativeColorRowBuffer)
-.attributes
-    ld a,[hl+]
-    sub 40
-    push hl
-    ld l,a
-    ld h,HIGH(NativeColorMetadata)
-    call NativeColorRead
-    call NativeColorPaletteForMask
-    ld h,HIGH(NativeColorRowBuffer)
-    ld l,c
-    ld [hl],a
-    inc c
-    pop hl
-    dec b
-    jr nz,.attributes
-    ; Unused map columns must not borrow stale buffer bytes.
-    ld hl,NativeColorRowBuffer + 11
-    xor a
-    REPT 5
-        ld [hl+],a
-    ENDR
-    ld a,[NativeColorRows]
-    ld l,a
-    ld h,0
-    REPT 5
-        add hl,hl
-    ENDR
-    ld a,[WaterfallMapDestHigh]
-    add h
-    ld d,a
-    ld e,l
-    pop hl
-    ld c,0
-    call NativeColorTransferRow
-    ld hl,NativeColorRowBuffer
-    inc c
-    call NativeColorTransferRow
+    ld h,a
+    ld a,c
+    call NativeStore
+    IF !DEF(NATIVE_LOW_RANGE)
+        ld a,1
+        call NativeColorStore
     ENDC
     pop hl
     pop de

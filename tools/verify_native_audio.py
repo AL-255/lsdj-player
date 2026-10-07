@@ -268,7 +268,7 @@ def main() -> int:
     parser.add_argument('--sample-rate', type=int, default=48000)
     parser.add_argument('--native-rom', type=Path, help='Verify this prebuilt native ROM against exactly one selected case')
     parser.add_argument('--connect-pitch-bends', action='store_true', help='Build the optional legato/pitch-bend waterfall renderer')
-    parser.add_argument('--low-range', action='store_true', help='Build the narrow lower-range waterfall with doubled notes and no NOI plot')
+    parser.add_argument('--low-range', action='store_true', help='Build the lower-range waterfall with doubled notes and no NOI plot')
     args = parser.parse_args()
     cases = [case for case in json.loads(args.cases.read_text())['cases']
              if any(fnmatch.fnmatchcase(case['id'], pattern) for pattern in (args.match or ['triac/*']))]
@@ -292,7 +292,7 @@ def main() -> int:
                        ROOT/'src/native/boot.asm', ROOT/'src/native/display.asm',
                        ROOT/'src/native/bend.asm', ROOT/'src/native/color.asm',
                        ROOT/'src/native/color_map.asm',
-                       ROOT/'src/native/low_range.asm',
+                       ROOT/'src/native/low_range.asm', ROOT/'src/native/scroll.asm',
                        ROOT/'src/waterfall.asm', ROOT/'src/exact_ui.asm')}, cases=[])
     for case in cases:
         result = verify_case(case, runner, args.output, args.seconds, args.sample_rate,

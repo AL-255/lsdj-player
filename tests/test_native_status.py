@@ -10,9 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "build/sameboy-native-analysis"
 AVAILABLE = RUNNER.exists() and all(shutil.which(tool) for tool in ("rgbasm", "rgblink", "rgbfix"))
-BPM_CELLS = tuple(range(0x9895, 0x9898))
-NOTE_CELLS = tuple(0x9915 + channel * 64 + cell for channel in range(4) for cell in range(4))
-LABEL_CELLS = tuple(0x9911 + channel * 64 + cell for channel in range(4) for cell in range(3))
+BPM_CELLS = tuple(range(0x9c85, 0x9c88))
+NOTE_CELLS = tuple(0x9d05 + channel * 64 + cell for channel in range(4) for cell in range(4))
+LABEL_CELLS = tuple(0x9d01 + channel * 64 + cell for channel in range(4) for cell in range(3))
 OBSERVED_CELLS = BPM_CELLS + NOTE_CELLS + LABEL_CELLS
 CGB_LABELS = bytes((6, 2, 14, 6, 2, 15, 0, 8, 1, 2, 3, 4))
 
@@ -41,6 +41,7 @@ DEF WaterfallActive EQU $cc24
 DEF WaterfallLCD EQU $cc27
 DEF WaterfallColumnBase EQU $cc40
 DEF WaterfallMapDestHigh EQU $cc44
+DEF NativeDrawMapColumn EQU $cc4a
 MACRO ExactUIGlyph
 ''' + glyph_macro + r'''ENDM
 SECTION "Header", ROM0[$100]
@@ -115,7 +116,11 @@ SnapshotStatus:
     jr nz,.cell
     ret
 ObservedAddresses:
-''' + addresses + "\n" + bpm + status + '\nINCLUDE "src/native/color.asm"\n'
+''' + addresses + "\n" + bpm + status + '''
+NativeKeyboardInit:
+    ret
+INCLUDE "src/native/color.asm"
+'''
 
 
 @unittest.skipUnless(AVAILABLE, "Build the SameBoy harness and install RGBDS first")
@@ -176,7 +181,7 @@ class NativeStatusTests(unittest.TestCase):
                     self.assertEqual(snapshot[:3], digits)
                     self.assertEqual(snapshot[3:19], bytes(16))
                     self.assertEqual(snapshot[19:], CGB_LABELS if model == "cgb" else bytes(12))
-            self.assertEqual(memory[0x9891:0x9894], bytes((24, 6, 1)))
+            self.assertEqual(memory[0x9c81:0x9c84], bytes((24, 6, 1)))
 
     def test_note_changes_silence_and_octave_width_preserve_labels(self):
         # Explicit glyph expectations exercise one/two-digit octave changes,
@@ -204,7 +209,7 @@ class NativeStatusTests(unittest.TestCase):
         memory, phases = self.run_program(body, ("cgb",))["cgb"]
         for index, (_, _, values, changed) in enumerate(cases):
             with self.subTest(sample=index):
-                expected_writes = [(0x9915 + channel * 64 + cell, value)
+                expected_writes = [(0x9d05 + channel * 64 + cell, value)
                                    for channel in changed for cell, value in enumerate(values[channel])]
                 self.assertEqual(phases[index + 1], expected_writes)
                 snapshot = self.snapshot(memory, index)

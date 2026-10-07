@@ -8,16 +8,98 @@ DEF NativePreviousNotes EQU $cc6a ; four pitch bytes; $ff means silent
 ASSERT NativePreviousNotes + 4 <= $cc70 ; CGB map DMA row buffer follows
 
 SECTION "Native live display", ROMX, BANK[5]
-NativeDisplayFrame::
+ ; These two entrypoints are chosen by the boot loop once. The macro emits
+; direct calls for each model: no hardware detection in any rendering loop.
+MACRO NativeFrameBody
     push af
     push bc
     push de
     push hl
-    ; A missed VBlank can leave another main-loop iteration pending. Do not
-    ; render the same phase twice while its completed frame awaits commit.
     ld a,[NativeFrameReady]
     or a
     jp nz,.done
+    call NativeSampleTonal
+    IF \1 || !DEF(NATIVE_LOW_RANGE)
+        call NativeSampleNoise
+    ENDC
+    ld a,[WaterfallPixelPhase]
+    or a
+    jr nz,.prepared_begin
+    call WaterfallBegin
+    IF \1 && !DEF(NATIVE_LOW_RANGE)
+        call NativeColorBegin
+    ENDC
+    xor a
+    ld [NativePrepareIndex],a
+.prepared_begin
+    IF DEF(NATIVE_CONNECT_PITCH_BENDS)
+        IF \1
+            call NativeBendFrameCGB
+        ELSE
+            call NativeBendFrameDMG
+        ENDC
+    ENDC
+    IF DEF(NATIVE_LOW_RANGE)
+        IF \1
+            call NativeLowRangePointsCGB
+        ELSE
+            call NativeLowRangePointsDMG
+        ENDC
+    ELSE
+        IF \1
+            call NativeColorPoints
+        ELSE
+            call NativePointsDMG
+        ENDC
+    ENDC
+    ld b,(WaterfallClearCount + WaterfallMapCount + 7) / 8
+.prepare
+    push bc
+    ld a,[NativePrepareIndex]
+    cp WaterfallClearCount + WaterfallMapCount
+    jr nc,.slice_done
+    sub WaterfallClearCount
+    jr c,.clear
+    IF \1
+        call NativeColorPrepareRow
+    ELSE
+        call NativePrepareRowDMG
+    ENDC
+    jr .slice_progress
+.clear
+    add WaterfallClearCount
+    IF \1
+        call NativeColorClearSlice
+    ELSE
+        call NativeClearSliceDMG
+    ENDC
+.slice_progress
+    ld hl,NativePrepareIndex
+    inc [hl]
+.slice_done
+    pop bc
+    dec b
+    jr nz,.prepare
+    call NativeBPM
+    IF \1
+        call NativeNotes
+    ENDC
+    ld a,1
+    ld [NativeFrameReady],a
+.done
+    pop hl
+    pop de
+    pop bc
+    pop af
+    ret
+ENDM
+NativeDisplayFrame::
+NativeDisplayFrameDMG::
+    NativeFrameBody 0
+NativeDisplayFrameCGB::
+    NativeFrameBody 1
+
+NativeSampleTonal:
     ldh a,[$ff26]
     and $0f
     ld [WaterfallActive],a
@@ -62,6 +144,8 @@ NativeDisplayFrame::
     inc de
     dec b
     jr nz,.voice
+    ret
+NativeSampleNoise:
     ldh a,[$ff22]
     ld l,a
     ld h,0
@@ -70,95 +154,40 @@ NativeDisplayFrame::
     ld a,[hl]
     ld [de],a
 
-    ld a,[WaterfallPixelPhase]
-    or a
-    jr nz,.prepared_begin
-    call WaterfallBegin
-    IF !DEF(NATIVE_LOW_RANGE)
-    ldh a,[$ff90]
-    or a
-    call nz,NativeColorBegin
-    ENDC
-    xor a
-    ld [NativePrepareIndex],a
-.prepared_begin
-    IF DEF(NATIVE_CONNECT_PITCH_BENDS)
-        call NativeBendFrame
-    ENDC
-    IF DEF(NATIVE_LOW_RANGE)
-    call NativeLowRangePoints
-    ELSE
-    ldh a,[$ff90]
-    or a
-    jr z,.monochrome_points
-    call NativeColorPoints
-    jr .points_ready
-.monochrome_points
-    call WaterfallPixelPoint0
-    call WaterfallPixelPoint1
-    call WaterfallPixelPoint2
-    call WaterfallPixelPoint3
-.points_ready
-    ENDC
-    ; The DMG-compatible renderer uses one map row per slice. Four slices
-    ; per frame finish all 12 clears and 18 rows before the eight-pixel wrap.
-    ld b,(WaterfallClearCount + WaterfallMapCount + 7) / 8
-.prepare
-    push bc
-    ld a,[NativePrepareIndex]
-    cp WaterfallClearCount + WaterfallMapCount
-    jr nc,.slice_done
-    ldh a,[$ff90]
-    or a
-    jr z,.ordinary_slice
-    ld a,[NativePrepareIndex]
-    sub WaterfallClearCount
-    jr c,.color_clear
-    call NativeColorPrepareRow
-    jr .slice_progress
-.color_clear
-    add WaterfallClearCount
-    call NativeColorClearSlice
-    jr .slice_progress
-.ordinary_slice
-    ld a,[NativePrepareIndex]
-    ld hl,NativePreparation
-    add a,a
-    ld c,a
-    ld b,0
-    add hl,bc
-    ld a,[hl+]
-    ld h,[hl]
-    ld l,a
-    ld de,.slice_return
-    push de
-    jp hl
-.slice_return
-.slice_progress
-    ld hl,NativePrepareIndex
-    inc [hl]
-.slice_done
-    pop bc
-    dec b
-    jr nz,.prepare
-    call NativeBPM
-    ; DMG spends its smaller display budget on the piano roll.
-    ldh a,[$ff90]
-    or a
-    call nz,NativeNotes
-    ld a,1
-    ld [NativeFrameReady],a
-.done
-    pop hl
-    pop de
-    pop bc
-    pop af
     ret
 
-; All four pens share a pixel column. Color pixels replace both bitplanes
-; with the channel's palette index; OR would mix two channels into a third.
 IF !DEF(NATIVE_LOW_RANGE)
+MACRO NativePointsBody
+    call NativePointsSetup
+    FOR channel,4
+        ld a,[WaterfallActive]
+        bit channel,a
+        jr z,.next{d:channel}
+        IF \1
+            ld a,channel
+            ld [NativeColorChannel],a
+        ENDC
+        ld a,[WaterfallPitchY + channel]
+        ld l,a
+        ld h,0
+        add hl,hl
+        add hl,de
+        IF \1
+            call NativeColorPixel
+        ELSE
+            call NativeRead
+            or b
+            call NativeStore
+        ENDC
+.next{d:channel}
+    ENDR
+    ret
+ENDM
+NativePointsDMG:
+    NativePointsBody 0
 NativeColorPoints:
+    NativePointsBody 1
+NativePointsSetup:
     ld a,[WaterfallPixelPhase]
     ld e,a
     ld d,0
@@ -173,20 +202,6 @@ NativeColorPoints:
     ld a,[hl+]
     ld d,[hl]
     ld e,a
-    FOR channel,4
-        ld a,[WaterfallActive]
-        bit channel,a
-        jr z,.next{d:channel}
-        ld a,channel
-        ld [NativeColorChannel],a
-        ld a,[WaterfallPitchY + channel]
-        ld l,a
-        ld h,0
-        add hl,hl
-        add hl,de
-        call NativeColorPixel
-.next{d:channel}
-    ENDR
     ret
 ENDC
 
@@ -205,6 +220,10 @@ NativeDisplayScroll::
     sub 144
     cp 8
     jr nc,.done
+    ld a,[WaterfallHead]
+    ld d,a
+    ld a,[NativeMapHead]
+    ld e,a
     ld a,[WaterfallPixelPhase]
     inc a
     ld b,a
@@ -214,52 +233,33 @@ NativeDisplayScroll::
     cp WaterfallClearCount + WaterfallMapCount
     jr c,.done
     ld b,0
-    IF DEF(NATIVE_LOW_RANGE)
-        ld c,127
-    ELSE
-        ld c,87
-    ENDC
-    ld a,[WaterfallNextLCD]
-    ld d,a
     ld a,[WaterfallNextHead]
-    ld e,a
-    jr .commit
-.fine
-    IF DEF(NATIVE_LOW_RANGE)
-        ld a,127
-    ELSE
-        ld a,87
-    ENDC
-    sub b
-    ld c,a
-    ld a,[WaterfallLCD]
     ld d,a
-    ld a,[WaterfallHead]
+    ld a,e
+    inc a
+    and 31
     ld e,a
-.commit
-    ; An audio interrupt may have used the rest of VBlank while the values
-    ; were computed. Recheck with interrupts masked only for the two stores.
-    ; LY 144..151 leaves two full blank lines of margin on either hardware.
+.fine
+    ld a,[NativeScrollX]
+    inc a
+    ld c,a
+    ; Audio can consume the rest of VBlank while we compute. Only the
+    ; final mode check and SCX store mask interrupts; missed frames wait.
     di
     ldh a,[$ff44]
     sub 144
     cp 8
     jr nc,.late
-    ld a,b
-    or a
-    jr nz,.window
-    ld a,d
-    ldh [$ff40],a
-.window
     ld a,c
-    ldh [$ff4b],a
+    ldh [$ff43],a
     ei
+    ld [NativeScrollX],a
     ld a,b
     ld [WaterfallPixelPhase],a
     ld a,d
-    ld [WaterfallLCD],a
-    ld a,e
     ld [WaterfallHead],a
+    ld a,e
+    ld [NativeMapHead],a
     xor a
     ld [NativeFrameReady],a
     jr .done
@@ -318,7 +318,7 @@ NativeBPM:
 .tens
     ld a,b
     add 13
-    ld hl,$9895
+    ld hl,$9c85
     call NativeStoreIncrement
     ld b,0
 .tens_loop
@@ -375,12 +375,6 @@ NativeRead:
     jr .wait
 
 NativePreparation:
-    FOR part,WaterfallClearCount
-        dw WaterfallClear{d:part}
-    ENDR
-    FOR part,WaterfallMapCount
-        dw WaterfallMap{d:part}
-    ENDR
 INCLUDE NATIVE_PITCH_TABLES
 
 NativeSongInfoInit:
@@ -404,7 +398,7 @@ NativeSongInfoInit:
     ld bc,32
     call .copy
     ld de,NativeInfoRows
-    ld hl,$9891
+    ld hl,$9c81
     ld b,12
 .row
     push bc
@@ -428,7 +422,7 @@ NativeSongInfoInit:
     ; The monochrome screen omits all four channel-status labels/values.
     xor a
     FOR channel,4
-        ld hl,$9911 + channel * 64
+        ld hl,$9d01 + channel * 64
         REPT 3
             ld [hl+],a
         ENDR
@@ -444,33 +438,33 @@ NativeSongInfoInit:
     ld bc,80
     call .copy
     ld a,8 ; tile-data bank 1, existing palette 0
-    ld [$9991],a
-    ld [$9993],a
-    ld [$99d1],a
-    ld [$99d2],a
-    ld [$99d3],a
+    ld [$9d81],a
+    ld [$9d83],a
+    ld [$9dc1],a
+    ld [$9dc2],a
+    ld [$9dc3],a
     xor a
     ldh [$ff4f],a
-    ld [$9991],a ; W in VRAM bank 1
+    ld [$9d81],a ; W in VRAM bank 1
     ld a,8
-    ld [$9992],a ; A in VRAM bank 0
+    ld [$9d82],a ; A in VRAM bank 0
     ld a,1
-    ld [$9993],a ; V
+    ld [$9d83],a ; V
     inc a
-    ld [$99d1],a ; N
+    ld [$9dc1],a ; N
     inc a
-    ld [$99d2],a ; O
+    ld [$9dc2],a ; O
     inc a
-    ld [$99d3],a ; I
+    ld [$9dc3],a ; I
 .labels_ready
-    ld hl,$98d1
+    ld hl,$9cc1
     ld a,5
     ld [hl+],a
     ldh a,[$ff90]
     or a
     jr nz,.cgb
     ld a,4
-    ld [$98d1],a
+    ld [$9cc1],a
     ld a,1
     jr .mode
 .cgb
@@ -488,9 +482,7 @@ NativeSongInfoInit:
     ldh a,[$ff90]
     or a
     call nz,NativeColorInit
-    IF DEF(NATIVE_LOW_RANGE)
-        call NativeLowRangeInit
-    ENDC
+    call NativeKeyboardInit
     ret
 .copy
     ld a,[de]
@@ -504,7 +496,7 @@ NativeSongInfoInit:
 
 NativeNotes:
     ld de,WaterfallPitchY
-    ld hl,$9915
+    ld hl,$9d05
     ld b,4
     ld c,1
 .channel

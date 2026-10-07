@@ -39,38 +39,19 @@ NativeColorInit:
     jr nz,.metadata
     ENDC
     ld hl,$9800
-    ld d,2
-.map
     ld e,18
 .row
-    IF DEF(NATIVE_LOW_RANGE)
-        ld b,6
-    ELSE
-        ld b,11
-    ENDC
+    ld b,32
     ld a,1
 .cell
     ld [hl+],a
     dec b
     jr nz,.cell
-    ld a,l
-    IF DEF(NATIVE_LOW_RANGE)
-        add 26
-    ELSE
-        add 21
-    ENDC
-    ld l,a
-    jr nc,.next_row
-    inc h
-.next_row
     dec e
     jr nz,.row
-    ld hl,$9c00
-    dec d
-    jr nz,.map
     ; Glyphs use color 3. Keep their existing tile-bank selection.
     FOR channel,4
-        ld hl,$9911 + channel * 64
+        ld hl,$9d01 + channel * 64
         ld b,8
 .label{d:channel}
         ld a,[hl]
@@ -119,39 +100,6 @@ NativeColorBegin:
     pop af
     ret
 
-; A=row. Called after the original map-number preparation for that row.
-NativeColorMapRow:
-    push af
-    push bc
-    push de
-    push hl
-    ld l,a
-    ld h,0
-    REPT 5
-        add hl,hl
-    ENDR
-    ld a,[WaterfallMapDestHigh]
-    add h
-    ld h,a
-    ld b,11
-.cell
-    call NativeRead
-    sub 40 ; native canvas starts at unsigned tile 40 ($8280)
-    push hl
-    ld l,a
-    ld h,HIGH(NativeColorMetadata)
-    call NativeColorRead
-    call NativeColorPaletteForMask
-    pop hl
-    call NativeColorStore
-    inc hl
-    dec b
-    jr nz,.cell
-    pop hl
-    pop de
-    pop bc
-    pop af
-    ret
 ENDC
 
 ; HL=bank-0 low-plane address, B=pixel bit; channel is NativeColorChannel.
@@ -432,8 +380,8 @@ NativeColorRemap:
     or c
     ret
 
-; The plotted physical column is always active-map column 10 and future
-; inactive-map column 9. This also corrects a row already prepared earlier.
+; Only the newest BG-map column can receive pixels. The other logical
+; aliases of this physical tile remain offscreen until they are recycled.
 NativeColorAttributes:
     ld a,[NativeColorTile]
 .row
@@ -447,21 +395,12 @@ NativeColorAttributes:
     REPT 5
         add hl,hl
     ENDR
-    ld a,l
-    add 10
+    ld a,[NativeDrawMapColumn]
+    add l
     ld l,a
-    ld a,[WaterfallLCD]
-    and $40
-    swap a
-    add $98
+    ld a,$98
     add h
     ld h,a
-    ld a,[NativeColorPalette]
-    call NativeColorStore
-    ld a,h
-    xor 4
-    ld h,a
-    dec l
     ld a,[NativeColorPalette]
     jp NativeColorStore
 

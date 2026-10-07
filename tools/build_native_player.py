@@ -88,43 +88,18 @@ def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=
         bank=kit_bank(kit);path=work/f'kit-{bank}.bin';path.write_bytes(rom[bank*0x4000:(bank+1)*0x4000]);data+=f'SECTION "Native kit{bank}", ROMX[$4000], BANK[{bank}]\n    INCBIN "{path}"\n'
     (work/'data.asm').write_text(data);sources.append(work/'data.asm')
     title=work/'song-title.bin';write_tiles(title,name)
-    waterfall=(ROOT/'src/waterfall.asm').read_text().replace('ROM0[$1800]','ROMX[$5800], BANK[5]').replace('WRAM0[$c920]','WRAM0[$cc20]').replace('WRAM0[$c930]','WRAM0[$cc30]').replace('WRAM0[$c940]','WRAM0[$cc40]')
-    waterfall=re.sub(r'ASSERT WaterfallEnd <= \$[34]000', 'ASSERT WaterfallEnd <= $8000',waterfall)
-    waterfall=waterfall.replace('ld hl,$8ff0','ld hl,$ccf0')
-    waterfall=waterfall.replace('            ld a,72\n','            xor a\n') # remove retired CPU bar sprites
-    waterfall=re.sub(r'WaterfallStatus::.*?(?=WaterfallCommit::)', 'WaterfallStatus::\nWaterfallBar::\n    ret\n\n',waterfall,flags=re.S)
-    waterfall=waterfall.replace('        ld a,[hl]\n        or b','        call NativeRead\n        or b')
-    if low_range:
-        waterfall=waterfall.replace('REDEF WaterfallColumns EQU 11','REDEF WaterfallColumns EQU 6')
-        waterfall=waterfall.replace('((head + 10) % WaterfallRingColumns)',
-                                    '((head + WaterfallColumns - 1) % WaterfallRingColumns)')
-        waterfall=waterfall.replace('ld a,80 ; OAM X=screen X+8: keyboard72..78, divider79',
-                                    'ld a,120 ; narrow plot: mask112..118, divider119')
-        waterfall=waterfall.replace('ld a,87','ld a,127')
+    waterfall=(ROOT/'src/native/scroll.asm').read_text()
     ui=(ROOT/'src/exact_ui.asm').read_text().replace('ROM0[$0220]','ROMX[$4220], BANK[5]').replace('INCLUDE "src/waterfall.asm"',f'INCLUDE "{work / "waterfall.asm"}"')
     ui=re.sub(r'ASSERT ExactUIFontEnd <= \$[0-9a-fA-F]+','ASSERT ExactUIFontEnd <= $5800',ui)
     ui=ui.replace('ASSERT @ <= $1000','ASSERT @ <= $5800')
     ui=re.sub(r'ExactUIUpdate::.*?ExactUIUpdateEnd::', 'ExactUIUpdate::\n    ret\nExactUIUpdateEnd::',ui,flags=re.S)
     ui=re.sub(r'ExactUIValues:.*?(?=MACRO ExactUIGlyph)', 'ExactUIValues:\n    db 0\n\n',ui,flags=re.S)
     ui=re.sub(r'ExactUIWaterfallBars:.*?(?=    ASSERT @)', 'ExactUIWaterfallBars:\n    db 0\n',ui,flags=re.S)
+    ui=ui.replace('ld a,$f7','ld a,$f3')
     ui=ui.replace('        call WaterfallInit','        call WaterfallInit\n        call NativeSongInfoInit')
     # Preserve the reference LCD phase: sequencer IRQs are synchronized to it.
     final_lcd=ui.rfind('    ldh [$ff40],a')
     ui=ui[:final_lcd]+'    call NativeAlignLCD\n'+ui[final_lcd:]
-    # LCD is disabled throughout ExactUIInit/WaterfallInit and their initial
-    # map helper. Direct stores there avoid thousands of unnecessary waits.
-    # Runtime stores retain A/flags and allow music IRQs to preempt the UI.
-    initialization = {}
-    for label,pattern in [('init',r'WaterfallInit::.*?(?=WaterfallBegin::)'),
-                          ('map',r'WaterfallInitialMap:.*?(?=IF DEF\(EXACT_PIXEL_WATERFALL\))')]:
-        match=re.search(pattern,waterfall,flags=re.S)
-        if match is None:raise ValueError(f'Missing waterfall {label} initialization boundary')
-        initialization[label]=match.group()
-        waterfall=waterfall[:match.start()]+f'; NATIVE_INITIAL_{label}\n'+waterfall[match.end():]
-    for original,replacement in [('ld [hl+],a','call NativeStoreIncrement'),('ld [hl],a','call NativeStore')]:
-        waterfall=waterfall.replace(original,replacement)
-    for label,text in initialization.items():
-        waterfall=waterfall.replace(f'; NATIVE_INITIAL_{label}\n',text)
     (work/'waterfall.asm').write_text(waterfall);(work/'ui.asm').write_text(ui);sources.append(work/'ui.asm')
     tables=[]; lookup=['SECTION "Native constant-time pitch lookup", ROMX, BANK[5]']
     for label,clock in [('NativePulseBoundaries',131072),('NativeWaveBoundaries',65536)]:
@@ -142,7 +117,7 @@ def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=
     (work/'display.asm').write_text(display)
     with (work/'ui.asm').open('a') as combined:combined.write(f'\nINCLUDE "{work / "display.asm"}"\n')
     objects=[]
-    flags=['-D','EXACT_WATERFALL=1','-D','EXACT_PIXEL_WATERFALL=1','-D','EXACT_DMG=1','-D','NATIVE_CHANNEL_COLORS=1','-D',f'WATERFALL_WIDTH={40 if low_range else 80}','-D',f'EXACT_SONG_GLYPHS="{title}"','-D',f'NATIVE_PITCH_TABLES="{work / "pitch-tables.asm"}"']
+    flags=['-D','EXACT_WATERFALL=1','-D','EXACT_PIXEL_WATERFALL=1','-D','EXACT_DMG=1','-D','NATIVE_CHANNEL_COLORS=1','-D','WATERFALL_WIDTH=80','-D',f'EXACT_SONG_GLYPHS="{title}"','-D',f'NATIVE_PITCH_TABLES="{work / "pitch-tables.asm"}"']
     if connect_pitch_bends:
         flags += ['-D','NATIVE_CONNECT_PITCH_BENDS=1']
     if low_range:
@@ -156,13 +131,15 @@ def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=
     manifest['initial_timer_state']={model:state.copy() for model,state in timer_state.items()}
     manifest['connect_pitch_bends']=bool(connect_pitch_bends)
     manifest['low_range']=bool(low_range)
-    manifest['waterfall']={'width_pixels':40 if low_range else 80,
+    manifest['waterfall']={'width_pixels':80,
                           'source_y_range':[72,143] if low_range else [0,143],
                           'pixels_per_semitone':2 if low_range else 1,
                           'plotted_channels':['PU1','PU2','WAV'] if low_range else ['PU1','PU2','WAV','NOI'],
-                          'canvas_tiles':126 if low_range else 216,
-                          'extra_keyboard_tiles':2 if low_range else 0,
-                          'cgb_metadata_bytes':0 if low_range else 216}
+                          'canvas_tiles':216,
+                          'extra_keyboard_tiles':0,
+                          'cgb_metadata_bytes':0 if low_range else 216,
+                          'scrolling':'hardware_bg_scx','plot_side':'left',
+                          'render_dispatch':'startup_selected_dmg_cgb'}
     manifest['cgb_channel_colors']={'PU1':'cyan','PU2':'pink','WAV':'green','NOI':'yellow'}
     output.with_suffix('.json').write_text(json.dumps(manifest,indent=2)+'\n');return manifest
 
@@ -297,7 +274,7 @@ if __name__=='__main__':
     p.add_argument('--align-startup',action='store_true',help='Calibrate bootstrap entry to both source snapshot timestamps (does not imply audio equality)')
     p.add_argument('--runner',type=Path,default=ROOT/'build/sameboy-native-analysis')
     p.add_argument('--connect-pitch-bends',action='store_true',help='Draw vertical waterfall connections for continuous legato/pitch bends (default: discrete points)')
-    p.add_argument('--low-range',action='store_true',help='Hide NOI from the plot and show the lower six octaves at double height in a narrower 40-pixel waterfall')
+    p.add_argument('--low-range',action='store_true',help='Hide NOI from the plot and show the lower six octaves at double height in the 80-pixel hardware-scrolled waterfall')
     p.add_argument('--startup-trace-cgb',type=Path,help='Source trace containing FF40 writes before the CGB startup snapshot')
     p.add_argument('--startup-trace-dmg',type=Path,help='Source trace containing FF40 writes before the DMG startup snapshot')
     a=p.parse_args()

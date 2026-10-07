@@ -3,7 +3,8 @@
 This repository contains the restored 128 KiB native interpreter prototype from
 the checkpoint requested during development. Its shared Game Boy assembly
 engine interprets native song data; ROM size does not grow with playback duration.
-The same image detects DMG/CGB hardware and initializes the appropriate palette.
+The same image detects DMG/CGB hardware at startup and selects separate
+rendering loops, without repeated hardware checks in frame or pixel drawing.
 
 **Experimental:** the piano-roll map preparation and DMG sprite corruption
 have regression fixes, but the native interpreter has not passed bit-exact
@@ -45,9 +46,9 @@ python3 tools/build_native_player.py \
 
 `src/native/boot.asm` hosts the shared sequencer and interrupt handling.
 `src/native/display.asm` renders the playback information and live pitch pixels.
-The builder adapts the shared display primitives in `src/exact_ui.asm` and
-`src/waterfall.asm`; the previous recorded playback implementation is excluded
-from this repository. `tools/recover_native_engine.py` can independently verify
+`src/native/scroll.asm` maintains the hardware-scrolled background and fixed
+window panel. The builder reuses the font initializer in `src/exact_ui.asm`;
+the previous recorded playback implementation is excluded from this repository. `tools/recover_native_engine.py` can independently verify
 that recovered engine banks assemble byte-for-byte to the locally supplied ROM.
 Bank 7 is retained for the shared tempo-command helper and its lookup tables.
 `--align-startup` uses the snapshot JSON timestamps, I/O state, and local capture
@@ -68,10 +69,13 @@ tile's history contains all four channels, NOI is hidden in that tile until
 the tile scrolls out and is reused; the other channel colors stay exact.
 At an identical pixel, priority is PU1, then PU2, WAV, and NOI.
 
-CGB prepares map rows and clears hidden columns with short, interruptible
-sequences of 16-byte DMA transfers. Unchanged tempo and note labels skip
-VRAM updates. The optimized color renderer uses about 58–62% fewer display
-CPU cycles per screen update on the three validation songs.
+The waterfall occupies the left 80 pixels; the information panel stays fixed
+in the right-side window. SCX scrolls the background by one pixel per committed
+update. Every eight pixels, only the entering column's 18 tile IDs change,
+instead of copying 198 map cells. The 32-column map and twelve physical tile
+columns wrap independently. CGB additionally updates palette attributes when
+needed and clears recycled tile data with short DMA blocks. Unchanged tempo
+and note labels skip VRAM updates.
 
 Add `--connect-pitch-bends` to the build command to connect successive legato
 and pitch-bend points with vertical lines in the waterfall. This optional
@@ -83,21 +87,17 @@ Note events entirely between those samples cannot be reconstructed.
 The extra drawing remains interruptible and can reduce the display frame rate
 on busy songs. The same flag is available in `tools/verify_native_audio.py`.
 
-Add `--low-range` for one combined lower-cost display mode on DMG and CGB:
-hide NOI from the waterfall, show the original lower six octaves (C1–B6)
-at two pixels per semitone, and narrow the plot from 80 to 40 pixels.
-NOI audio and its CGB readout remain active. This option also works with
-`--connect-pitch-bends`; connections are clipped at the new range boundary.
-It is disabled by default and is available in the audio verifier too.
+Add `--low-range` to hide NOI from the waterfall and show the original lower
+six octaves (C1–B6) at two pixels per semitone. The hardware-scrolled plot keeps
+its 80-pixel width on both models. NOI audio and its CGB readout remain active.
+This option also works with `--connect-pitch-bends`; connections clip at the new
+range boundary. It is disabled by default and available in the audio verifier.
 
-The narrow ring uses 126 canvas tiles instead of 216. After two extra
-keyboard tiles, this frees **88 tile slots (1,408 VRAM bytes)**. CGB also
-eliminates the 216-byte channel metadata and uses fixed channel colors,
-skipping palette remapping and attribute updates. On the three validation
-songs this mode uses **60–66% fewer CGB display cycles per update** and
-**16–20% fewer on DMG**, compared with the optimized full-width view.
-These measurements cover seconds 8–20 with bend connections both off and on;
-screen updates still yield to audio. See the validation notes for details.
+Both pitch ranges use 216 canvas tiles. The enlarged keyboard reuses existing
+font tiles through 8×8 sprites, preserving all displayed text and song titles.
+CGB's low-range view uses fixed channel colors, eliminating the 216-byte channel
+metadata, palette remapping, and attribute updates. See the validation notes
+for performance measurements and the remaining audio-equivalence failure.
 
 Run the native regression checks with the local inputs above available:
 
@@ -105,7 +105,8 @@ Run the native regression checks with the local inputs above available:
 python3 -m unittest discover -s tests -p 'test_native*.py' -v
 ```
 
-The display check exercises DMG and CGB map swaps through the complete ring.
+The display checks exercise both hardware-scroll rings and the stationary
+window on DMG and CGB, and confirm that each model uses its own rendering code.
 The delay checks verify cycle counts and exclude the DMG OAM-corruption address
 range. See [native validation](docs/native-validation.md) for the separate
 LSDj/native audio comparisons and their remaining failures.

@@ -18,14 +18,14 @@ def store(address, value):
     return f"    ld a,${value:02x}\n    ld [${address:04x}],a\n"
 
 
-def point(channel, column, y, x=0):
+def point(channel, column, y, x=0, *, map_column=None):
     address = 0x8280 + column * 288 + y * 2
-    return (store(0xcc50, channel)
+    return (store(0xcc50, channel) + store(0xcc4a, column if map_column is None else map_column)
             + f"    ld hl,${address:04x}\n    ld b,${0x80 >> x:02x}\n"
             + "    call NativeColorPixel\n")
 
 
-def program(body, *, bends=False, interrupt="    reti\n", refresh_maps=True):
+def program(body, *, bends=False, interrupt="    reti\n"):
     display = (ROOT / "src/native/display.asm").read_text()
     accessors = display.split("NativeStore:\n", 1)[1].split("NativePreparation:", 1)[0]
     maps = ""
@@ -50,14 +50,8 @@ def program(body, *, bends=False, interrupt="    reti\n", refresh_maps=True):
     labels = "    ld a,1\n    ldh [$ff4f],a\n"
     for channel in range(4):
         for cell in range(8):
-            labels += store(0x9911 + channel * 64 + cell, 8 if channel >= 2 else 0)
+            labels += store(0x9d01 + channel * 64 + cell, 8 if channel >= 2 else 0)
     labels += "    xor a\n    ldh [$ff4f],a\n"
-    refresh = ""
-    if refresh_maps:
-        for base in (0x9800, 0x9c00):
-            refresh += store(0xcc44, base >> 8)
-            for row in range(18):
-                refresh += f"    ld a,{row}\n    call NativeColorMapRow\n"
     return r'''
 DEF NATIVE_CHANNEL_COLORS EQU 1
 DEF WaterfallPitchY EQU $cc20
@@ -67,6 +61,8 @@ DEF WaterfallLCD EQU $cc27
 DEF WaterfallColumnBase EQU $cc40
 DEF WaterfallMapDestHigh EQU $cc44
 DEF WaterfallPixelPhase EQU $cc47
+DEF NativeMapColumn EQU $cc49
+DEF NativeDrawMapColumn EQU $cc4a
 SECTION "Timer interrupt", ROM0[$50]
     jp AudioInterrupt
 SECTION "Header", ROM0[$100]
@@ -105,7 +101,7 @@ Start:
     jr nz,.clear
 ''' + maps + labels + store(0xcc27, 0xb7) + r'''
     call NativeColorInit
-''' + references + body + refresh + r'''
+''' + references + body + r'''
     ; Preserve bank 1 for assertions before starting the display. CPU bus
     ; reads of VRAM during a later mode 3 would otherwise return $ff.
     ldh a,[$ff40]
@@ -154,6 +150,7 @@ Start:
 AudioInterrupt:
 ''' + interrupt + r'''
 INCLUDE "src/native/color.asm"
+INCLUDE "src/native/color_map.asm"
 ''' + ('INCLUDE "src/native/bend.asm"\n' if bends else '') + r'''
 NativeStore:
 ''' + accessors + r'''
@@ -237,7 +234,7 @@ class NativeColorTests(unittest.TestCase):
         for channel, (palette, attribute) in enumerate(((5, 5), (6, 6), (1, 9), (7, 15))):
             self.assertEqual(memory[0xc206 + palette * 8:0xc208 + palette * 8],
                              COLORS[channel].to_bytes(2, "little"))
-            offset = 0xd911 + channel * 64
+            offset = 0xdd01 + channel * 64
             self.assertEqual(memory[offset:offset + 8], bytes([attribute]) * 8)
 
     def test_pixel_overlap_priority_and_register_preservation(self):
@@ -252,7 +249,7 @@ class NativeColorTests(unittest.TestCase):
             for channel in channels:
                 body += point(channel, index, 40, 3)
             expected[(index * 8 + 3, 40)] = min(channels)
-        body += store(0xcc50, 1) + r'''
+        body += store(0xcc50, 1) + store(0xcc4a, 0) + r'''
     ld bc,$104e
     ld de,$bace
     ld hl,$82e4
@@ -265,29 +262,23 @@ class NativeColorTests(unittest.TestCase):
         self.assert_screen(pixels, expected)
         self.assertEqual(memory[0xc280:0xc286], bytes.fromhex("10 4e ba ce 82 e4"))
 
-    def test_column_reuse_clears_only_its_metadata_and_prepares_both_maps(self):
+    def test_column_reuse_clears_only_its_metadata_and_prepares_incoming_cells(self):
         body = ""
         for column in range(12):
             for row in range(18):
                 body += point(3, column, row * 8, 0)
         # Clear the last physical column and then the first, spanning the
         # ring wrap. Clear patterns as the normal preparation slices do.
-        for column in (11, 0):
+        for column, incoming in ((11, 31), (0, 0)):
             base = 0x8280 + column * 288
             body += store(0xcc40, base & 255) + store(0xcc41, base >> 8)
             body += "    call NativeColorBegin\n"
             body += f"    ld hl,${base:04x}\n    ld b,144\n"
             body += f".clear_column{column}\n    xor a\n    ld [hl+],a\n    ld [hl+],a\n"
             body += f"    dec b\n    jr nz,.clear_column{column}\n"
-        # Change the inactive map's IDs as normal preparation does, then
-        # ask the color row helper to publish corresponding attributes.
-        for base in (0x9800, 0x9c00):
-            body += store(0xcc44, base >> 8)
+            body += store(0xcc49, incoming)
             for row in range(18):
-                for column in range(11):
-                    physical = (column + 1) % 12
-                    body += store(base + row * 32 + column, 40 + physical * 18 + row)
-                body += f"    ld a,{row}\n    call NativeColorMapRow\n"
+                body += f"    ld a,{row}\n    call NativeColorPrepareRow\n"
         # This driver is large enough to occupy the fixed bank-1 window.
         assembly = program("    call ColumnCases\n")
         assembly += '\nSECTION "Column cases", ROMX[$4000], BANK[1]\nColumnCases:\n' + body + "    ret\n"
@@ -296,42 +287,40 @@ class NativeColorTests(unittest.TestCase):
         self.assertEqual(metadata[:18], bytes(18))
         self.assertEqual(metadata[-18:], bytes(18))
         self.assertTrue(all(metadata[18:198]))
-        for base in (0xd800, 0xdc00):
-            for row in range(18):
-                for column in range(11):
-                    expected = 1 if column == 10 else 2
-                    self.assertEqual(memory[base + row * 32 + column] & 7, expected,
-                                     f"map {base:04x}, row {row}, column {column}")
+        for row in range(18):
+            for column in range(12):
+                expected = 1 if column == 0 else 2
+                self.assertEqual(memory[0xd800 + row * 32 + column] & 7, expected,
+                                 f"row {row}, column {column}")
+            self.assertEqual(memory[0xd800 + row * 32 + 31], 1)
 
-    def test_palette_changes_update_current_and_already_prepared_future_map(self):
+    def test_palette_changes_update_only_the_current_bg_column_at_wrap(self):
         body = ""
         expected = bytearray()
-        for variant, active in enumerate((0x9800, 0x9c00)):
-            inactive = active ^ 0x400
+        for logical in (0, 31):
             body += "    call NativeColorInit\n"
-            body += store(0xcc27, 0xb7 | (0x40 if variant else 0))
-            body += store(0xcc26, 1)  # newest physical column is 11
-            body += store(0xcc44, inactive >> 8)
             for row in (0, 17):
-                # The next map shifts the current newest tile left once.
-                body += store(active + row * 32 + 10, 40 + 11 * 18 + row)
-                body += store(inactive + row * 32 + 9, 40 + 11 * 18 + row)
-                body += f"    ld a,{row}\n    call NativeColorMapRow\n"
+                # Adjacent BG cells and the static window must not change.
+                for base, column in ((0x9800, logical ^ 1), (0x9c00, logical)):
+                    body += (f"    ld hl,${base + row * 32 + column:04x}\n"
+                             "    ld a,$aa\n    call NativeColorStore\n")
             for stage, channel in enumerate((3, 2, 1, 0)):
                 for row in (0, 17):
-                    body += point(channel, 11, row * 8 + channel, channel)
+                    body += point(channel, 11, row * 8 + channel, channel, map_column=logical)
                 for row in (0, 17):
-                    for base, column in ((active, 10), (inactive, 9)):
+                    for base, column, value in ((0x9800, logical, (2, 3, 4, 1)[stage]),
+                                                (0x9800, logical ^ 1, 0xaa),
+                                                (0x9c00, logical, 0xaa)):
                         destination = 0xc300 + len(expected)
                         body += (f"    ld hl,${base + row * 32 + column:04x}\n"
                                  "    call NativeColorRead\n"
                                  f"    ld [${destination:04x}],a\n")
-                        expected.append((2, 3, 4, 1)[stage])
-        memory, _, _ = self.run_program(program(body, refresh_maps=False))
+                        expected.append(value)
+        memory, _, _ = self.run_program(program(body))
         self.assertEqual(memory[0xc300:0xc300 + len(expected)], expected)
 
     def test_bend_span_uses_its_channel_color(self):
-        body = store(0xcc26, 2) + store(0xcc47, 3)
+        body = store(0xcc26, 2) + store(0xcc47, 3) + store(0xcc4a, 0)
         expected = {}
         for channel, (first, last) in enumerate(((4, 19), (30, 10), (123, 143))):
             body += store(0xcc50, channel)
@@ -342,7 +331,7 @@ class NativeColorTests(unittest.TestCase):
         self.assert_screen(pixels, expected)
 
     def test_long_colored_spans_allow_audio_irqs_with_bank_zero_restored(self):
-        body = store(0xcc26, 2) + r'''
+        body = store(0xcc26, 2) + store(0xcc4a, 0) + r'''
     xor a
     ld [$c100],a
     ld [$c101],a

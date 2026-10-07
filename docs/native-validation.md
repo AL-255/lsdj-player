@@ -221,6 +221,9 @@ Full results are in:
 
 ## Optional narrow lower pitch range
 
+This section records the earlier narrow renderer. The hardware-scroll version
+described below keeps the low-range mode at 80 pixels wide.
+
 `--low-range` combines the requested three display changes: omit NOI pixels,
 discard original pitch rows 0–71, and double rows 72–143 to fill the screen.
 The visible range is C1–B6, with B6 at the top. The plot narrows from 80 to
@@ -267,3 +270,49 @@ does not resolve the existing native audio-equivalence issue. Reports:
 
 - `build/audio-ab/native-low-range-verification/report.json`
 - `build/audio-ab/native-low-range-bend-verification/report.json`
+
+## Hardware scrolling and separate model rendering
+
+The waterfall now occupies the left 80 pixels of the background; the fixed
+information panel uses the window at x=80. A committed display update changes
+SCX, without moving the window or swapping maps. The 32 background-map columns
+and twelve physical pattern columns wrap independently. Before each eight-pixel
+step, only the entering offscreen column receives 18 tile IDs, versus 198 cells
+in the previous 80-pixel renderer. Pixel drawing and hidden-column clearing
+remain necessary. Full-color CGB additionally resets the entering attributes
+and updates the drawing column's palette when its channel set changes.
+
+The same ROM contains separate DMG and CGB foreground loops, frame routines,
+point routines, and optional bend loops. Startup selects the foreground loop
+once; rendering uses direct model-specific calls. Shared pitch sampling, bend
+detection, and scroll commits avoid unnecessary duplication. The original
+LSDj audio engine remains shared and retains its model-dependent behavior.
+
+Both pitch ranges now use 216 canvas tiles. The keyboard uses eighteen 8×8
+sprites and tiles 26, 27, and the obsolete H glyph at 37. This fits the enlarged
+keyboard into the existing 40 reserved font tiles, preserving all visible text
+and song titles. The low-range option still omits NOI pixels and doubles C1–B6;
+all four audio channels remain active. Its former narrow-view tile savings no
+longer apply, while its fixed CGB palette still avoids metadata and remapping.
+
+All 36 native tests pass. Actual emulator execution profiles confirm that each
+model executes only its own foreground/frame/point/bend entrypoints. Integration
+checks cover all 32 logical positions, all twelve physical ring positions,
+SCX wrapping from 255 to 0, all 18 actual map rows, fixed window registers and
+title pixels, preserved keyboard sprites, and deferred commits under a heavy
+audio interrupt. Color checks cover incoming-column updates, palette reuse,
+untouched neighboring/window cells, and audio interrupts during VRAM work.
+Startup clearing is unrolled so early song snapshots still align.
+
+Fresh 20-second comparisons cover TRIAC, WOW, and KASHIWA on both models with
+both pitch ranges and bends off/on. All 24 align startup timing and match total
+song APU-write counts, with no previous stack/memory warnings. **All 24 still
+fail strict PCM equality**; the existing audio-equivalence issue remains.
+Local reports are in:
+
+- `build/audio-ab/native-scroll-full-points/report.json`
+- `build/audio-ab/native-scroll-full-bends/report.json`
+- `build/audio-ab/native-scroll-low-points/report.json`
+- `build/audio-ab/native-scroll-low-bends/report.json`
+
+Generated ROMs and measurement artifacts are in `build/hardware-scroll/`.

@@ -21,11 +21,7 @@ NativeBendInit:
     jr nz,.clear
     ret
 
-NativeBendFrame:
-    push af
-    push bc
-    push de
-    push hl
+NativeBendDetect:
     xor a
     ld [NativeBendConnectMask],a
     ; Decide all three voices before drawing. Long spans may be preempted
@@ -125,6 +121,16 @@ NativeBendFrame:
         set channel,[hl]
 .disconnected{d:channel}
     ENDR
+    ret
+
+; Hardware selection happens in the caller; detection is shared and
+; contains no VRAM work. Both frame entrypoints preserve all registers.
+MACRO NativeBendFrameBody
+    push af
+    push bc
+    push de
+    push hl
+    call NativeBendDetect
     FOR channel,3
         ld a,[NativeBendConnectMask]
         bit channel,a
@@ -133,12 +139,31 @@ NativeBendFrame:
         ld b,a
         ld a,[WaterfallPitchY + channel]
         ld c,a
-        IF DEF(NATIVE_CHANNEL_COLORS)
+        IF \2
             ld a,channel
             ld [NativeColorChannel],a
         ENDC
-        call NativeBendSpan
+        call \1
 .point{d:channel}
+    ENDR
+    jp NativeBendFrameFinish
+ENDM
+
+IF !DEF(NATIVE_CHANNEL_COLORS)
+NativeBendFrame::
+NativeBendFrameCGB::
+ENDC
+NativeBendFrameDMG::
+    NativeBendFrameBody NativeBendSpanDMG,0
+
+IF DEF(NATIVE_CHANNEL_COLORS)
+NativeBendFrame::
+NativeBendFrameCGB::
+    NativeBendFrameBody NativeBendSpanCGB,1
+ENDC
+
+NativeBendFrameFinish:
+    FOR channel,3
         ld a,[WaterfallPitchY + channel]
         ld [NativeBendPreviousY + channel],a
     ENDR
@@ -153,7 +178,54 @@ NativeBendFrame:
 ; B=previous Y, C=current Y (0..143). Fill the inclusive vertical span in
 ; the newest pixel column. Equal pitches already have their ordinary point.
 ; All spans use the same ring/head mapping as WaterfallPixelPoint0..3.
-NativeBendSpan:
+IF !DEF(NATIVE_CHANNEL_COLORS)
+NativeBendSpan::
+NativeBendSpanCGB::
+ENDC
+NativeBendSpanDMG::
+    call NativeBendSpanSetup
+    ret z
+.pixel
+    ; Each access waits with IRQs available. Slow drawing holds the scroll
+    ; while the audio engine continues to interrupt the foreground renderer.
+    IF DEF(NATIVE_LOW_RANGE)
+        call NativeLowRangeMonochromePixel
+    ELSE
+        call NativeRead
+        or b
+        call NativeStore
+    ENDC
+    inc hl
+    inc hl
+    IF DEF(NATIVE_LOW_RANGE)
+        inc hl
+        inc hl
+    ENDC
+    dec c
+    jr nz,.pixel
+    ret
+
+IF DEF(NATIVE_CHANNEL_COLORS)
+NativeBendSpan::
+NativeBendSpanCGB::
+    call NativeBendSpanSetup
+    ret z
+.pixel
+    call NativeColorPixel
+    inc hl
+    inc hl
+    IF DEF(NATIVE_LOW_RANGE)
+        inc hl
+        inc hl
+    ENDC
+    dec c
+    jr nz,.pixel
+    ret
+ENDC
+
+; Return Z for an empty/clipped span; otherwise HL is its first row,
+; B the pixel mask and C a positive row count. No hardware checks.
+NativeBendSpanSetup:
     ld a,b
     cp c
     ret z
@@ -165,7 +237,10 @@ NativeBendSpan:
         ; Clip in the original pitch coordinates before doubling rows.
         ld a,c
         sub 72
-        ret c
+        jr nc,.upper_ready
+        xor a
+        ret
+.upper_ready
         ld c,a
         ld a,b
         sub 72
@@ -203,41 +278,6 @@ NativeBendSpan:
         add hl,hl
     ENDC
     add hl,de
-    IF DEF(NATIVE_CHANNEL_COLORS)
-        ldh a,[$ff90]
-        or a
-        jr nz,.color_pixel
-    ENDC
-.pixel
-    ; Each read/store waits with IRQs available and masks only its own VRAM
-    ; access. Audio may stretch rendering across frames; the existing frame
-    ; scheduler then defers scrolling and drops redundant screen updates.
-    IF DEF(NATIVE_LOW_RANGE)
-        call NativeLowRangeMonochromePixel
-    ELSE
-        call NativeRead
-        or b
-        call NativeStore
-    ENDC
-    inc hl
-    inc hl
-    IF DEF(NATIVE_LOW_RANGE)
-        inc hl
-        inc hl
-    ENDC
-    dec c
-    jr nz,.pixel
+    ld a,c
+    or a
     ret
-    IF DEF(NATIVE_CHANNEL_COLORS)
-.color_pixel
-        call NativeColorPixel
-        inc hl
-        inc hl
-        IF DEF(NATIVE_LOW_RANGE)
-            inc hl
-            inc hl
-        ENDC
-        dec c
-        jr nz,.color_pixel
-        ret
-    ENDC

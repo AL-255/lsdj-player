@@ -1,38 +1,23 @@
-"""Check CGB map DMA against real VRAM and the PPU with audio IRQs active."""
+"""Check incoming BG columns and CGB clear DMA with audio IRQs active."""
 import unittest
 
 import test_native_colors as colors
 from test_native_colors import AVAILABLE, program, store
 
 
-MASK_PALETTES = (1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 4, 1)
-PALETTE_CHANNELS = ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3))
+def select_column(physical, logical):
+    address = 0x8280 + physical * 288
+    return (store(0xcc40, address & 255) + store(0xcc41, address >> 8)
+            + store(0xcc49, logical))
 
 
-def row_table(head, row):
-    return [40 + ((head + column) % 12) * 18 + row for column in range(11)] + [
-        (0xd0 + head + row + column) & 255 for column in range(5)
-    ]
-
-
-def select_head(head):
-    return (f"    ld a,LOW(MapHead{head})\n    ld [WaterfallMapSource],a\n"
-            f"    ld a,HIGH(MapHead{head})\n    ld [WaterfallMapSource+1],a\n")
-
-
-def prepare_maps():
-    return r'''
-    ld a,$98
-    ld [WaterfallMapDestHigh],a
-    call PrepareAllRows
-    ld a,$9c
-    ld [WaterfallMapDestHigh],a
-    call PrepareAllRows
-'''
+def prepare_ring():
+    return "".join(select_column(logical % 12, logical) + "    call PrepareAllRows\n"
+                   for logical in range(32))
 
 
 def finish():
-    # The four reference swatches are outside the 16-column DMA region.
+    # Put reference colors outside the columns used for PPU comparisons.
     result = r'''
     ldh a,[$ff40]
     bit 7,a
@@ -66,14 +51,12 @@ def finish():
 
 
 def assembly(body, interrupt="    reti\n", *, complete_early=False):
-    result = "DEF WaterfallMapSource EQU $cc42\n" + program(
+    result = program(
         "    call InitializeFixtures\n" + body
         + ("    jp NativeDMATestDone\n" if complete_early else finish()),
-        interrupt=interrupt, refresh_maps=False,
+        interrupt=interrupt,
     )
     result += r'''
-INCLUDE "src/native/color_map.asm"
-
 NativeDMATestDone:
     ld a,$ac
     ld [$c1ff],a
@@ -87,6 +70,15 @@ PrepareAllRows:
     inc a
     cp 18
     jr nz,.row
+    ret
+
+ClearColumn:
+    xor a
+.stage
+    call NativeColorClearSlice
+    inc a
+    cp 12
+    jr nz,.stage
     ret
 
 InitializeFixtures:
@@ -137,11 +129,6 @@ Patterns:
         result += "    db " + ",".join(str(value) for value in
                                        ([255 if code & 1 else 0, 255 if code & 2 else 0] * 8)) + "\n"
     result += "Masks:\n    db " + ",".join(str(tile % 16) for tile in range(216)) + "\n"
-    result += "    ds (-@) & 15,0\n"
-    for head in range(12):
-        result += f"MapHead{head}:\n"
-        for row in range(18):
-            result += "    db " + ",".join(map(str, row_table(head, row))) + "\n"
     return result
 
 
@@ -150,40 +137,39 @@ class NativeColorDMATests(unittest.TestCase):
     run_program = colors.NativeColorTests.run_program
     pixel = colors.NativeColorTests.pixel
 
-    def check_maps_and_screen(self, memory, pixels, head):
+    def check_maps(self, memory, assignments):
         for bank in range(2):
-            for base in ((0xc300, 0xc700) if bank == 0 else (0xd800, 0xdc00)):
+            for is_window, base in enumerate((0xc300, 0xc700) if bank == 0 else (0xd800, 0xdc00)):
                 for row in range(32):
                     expected = bytearray([0xaa] * 32)
-                    if row < 18:
-                        ids = row_table(head, row)
-                        expected[:16] = bytes(ids if bank == 0 else [
-                            MASK_PALETTES[(tile - 40) % 16] for tile in ids[:11]
-                        ] + [0] * 5)
+                    if row < 18 and not is_window:
+                        for logical, physical in assignments.items():
+                            expected[logical] = 40 + physical * 18 + row if bank == 0 else 1
                     if row == 0:
                         expected[16:20] = bytes((20, 21, 22, 23) if bank == 0 else (1, 1, 1, 2))
                     self.assertEqual(memory[base + row * 32:base + (row + 1) * 32], expected,
-                                     f"head {head}, VRAM bank {bank}, map {base:04x}, row {row}")
-        colors = [self.pixel(pixels, (16 + channel) * 8, 0) for channel in range(4)]
-        self.assertEqual(len(set(colors)), 4)
-        # Verify real displayed pixels throughout both screen halves, not
-        # merely attempted writes that a busy PPU might have discarded.
-        for row in range(18):
-            for column in range(11):
-                tile = ((head + column) % 12) * 18 + row
-                palette = MASK_PALETTES[tile % 16]
-                channel = PALETTE_CHANNELS[palette - 1][tile % 3]
-                for y_offset in (0, 7):
-                    self.assertEqual(self.pixel(pixels, column * 8 + 3, row * 8 + y_offset), colors[channel],
-                                     f"head {head}, displayed column {column}, row {row}")
+                                     f"VRAM bank {bank}, map {base:04x}, row {row}")
+        self.assertEqual(memory[0xd000:0xd0d8], bytes(tile % 16 for tile in range(216)),
+                         "Preparing map IDs must not change physical-tile history")
 
-    def test_all_ring_heads_prepare_both_maps_and_all_rows(self):
-        for head in range(12):
-            with self.subTest(head=head):
-                body = select_head(head) + prepare_maps()
-                memory, pixels, _ = self.run_program(assembly(body))
-                self.check_maps_and_screen(memory, pixels, head)
-                self.assertEqual(memory[0xcc7b:0xcc80], bytes(5), "unused attribute bytes were not cleared")
+    def test_incoming_columns_cover_all_physical_heads_and_logical_wrap(self):
+        # Fill all 32 logical columns, then reuse columns 0 and 1 after the
+        # map wraps. Twelve physical columns need not divide the map width.
+        body = prepare_ring()
+        assignments = {logical: logical % 12 for logical in range(32)}
+        for logical, physical in ((0, 11), (1, 0)):
+            body += select_column(physical, logical) + "    call PrepareAllRows\n"
+            assignments[logical] = physical
+        memory, pixels, _ = self.run_program(assembly(body))
+        self.check_maps(memory, assignments)
+        swatches = [self.pixel(pixels, (16 + channel) * 8, 0) for channel in range(4)]
+        self.assertEqual(len(set(swatches)), 4)
+        for row in range(18):
+            for column in range(16):
+                tile = assignments[column] * 18 + row
+                for y_offset in (0, 7):
+                    self.assertEqual(self.pixel(pixels, column * 8 + 3, row * 8 + y_offset),
+                                     swatches[tile % 3], f"column {column}, row {row}")
 
     def test_clear_slices_touch_exact_bytes_in_every_physical_column(self):
         patterns = b"".join(bytes([255 if code & 1 else 0, 255 if code & 2 else 0] * 8)
@@ -191,7 +177,7 @@ class NativeColorDMATests(unittest.TestCase):
         for column in range(12):
             with self.subTest(column=column):
                 base = 0x8280 + column * 288
-                body = store(0xcc40, base & 255) + store(0xcc41, base >> 8)
+                body = select_column(column, 0)
                 for stage in range(12):
                     body += (f"    ld a,{stage}\n    call NativeColorClearSlice\n"
                              f"    ld hl,${base:04x}\n    ld de,${0xd000 + stage * 288:04x}\n"
@@ -221,7 +207,7 @@ class NativeColorDMATests(unittest.TestCase):
                 self.assertEqual(memory[0xc400:0xc4d8], bytes(tile % 16 for tile in range(216)))
                 self.assertEqual(memory[0xcc70:0xcc80], bytes(16))
 
-    def test_live_lcd_dma_keeps_timer_audio_running_and_vram_bank_zero(self):
+    def test_live_lcd_column_preparation_and_clear_dma_keep_audio_running(self):
         body = r'''
     xor a
     ld [$c100],a
@@ -244,10 +230,10 @@ class NativeColorDMATests(unittest.TestCase):
     ld b,4
 .round
     push bc
-''' + select_head(11) + prepare_maps() + select_head(0) + prepare_maps() + r'''
+''' + prepare_ring() + select_column(11, 0) + "    call ClearColumn\n" + r'''
     pop bc
     dec b
-    jr nz,.round
+    jp nz,.round
     ld a,$32
     ldh [$ff03],a
     di
@@ -262,8 +248,8 @@ class NativeColorDMATests(unittest.TestCase):
     jr z,.bank_ok
     ld [$c101],a
 .bank_ok
-    ; Spend most of this timer period in music, so return frequently lands
-    ; in a different LCD mode from the foreground's last observation.
+    ; Most of each period is music, forcing frequent PPU-mode changes
+    ; between foreground checks and short access windows.
     push bc
     ld b,180
 .busy
@@ -280,8 +266,8 @@ class NativeColorDMATests(unittest.TestCase):
     pop af
     reti
 '''
-        memory, pixels, writes = self.run_program(assembly(body, interrupt))
-        self.check_maps_and_screen(memory, pixels, 0)
+        memory, _, writes = self.run_program(assembly(body, interrupt))
+        self.check_maps(memory, {logical: logical % 12 for logical in range(32)})
         markers = {int(row["value"], 16): int(row["ticks_8mhz"])
                    for row in writes if row["address"] == "ff03"}
         audio = [int(row["ticks_8mhz"]) for row in writes

@@ -106,13 +106,16 @@ class NativeBendTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         target = Path(directory.name)
         source, obj, rom = (target / name for name in ("bends.asm", "bends.o", "bends.gb"))
-        source.write_text(assembly)
-        for command in (["rgbasm", "-o", str(obj), str(source)],
-                        ["rgblink", "-o", str(rom), str(obj)],
-                        ["rgbfix", "-v", "-C", "-p", "0", str(rom)]):
-            subprocess.run(command, cwd=ROOT, check=True, capture_output=True)
         results = {}
         for model in ("dmg", "cgb"):
+            # Pick the entrypoint when building the harness, as the native
+            # player's model-specific frame path does before drawing.
+            source.write_text(assembly.replace("call NativeBendFrame\n",
+                                               f"call NativeBendFrame{model.upper()}\n"))
+            for command in (["rgbasm", "-o", str(obj), str(source)],
+                            ["rgblink", "-o", str(rom), str(obj)],
+                            ["rgbfix", "-v", "-C", "-p", "0", str(rom)]):
+                subprocess.run(command, cwd=ROOT, check=True, capture_output=True)
             memory, trace = target / f"{model}.bin", target / f"{model}.tsv"
             command = [str(RUNNER), "--model", model, "--rom", str(rom), "--frames", "300",
                        "--memory-out", str(memory), "--trace", str(trace)]
