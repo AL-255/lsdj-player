@@ -104,3 +104,30 @@ The separate legacy `test_waterfall.py` checks the old recorded player's
 cycle constants. Its five initialization-cycle failures and DMG width-80
 assembly failure are pre-existing: that test uses the unchanged
 `src/exact_ui.asm` and `src/waterfall.asm`, not the native files modified here.
+
+## Optional bend connections
+
+`--connect-pitch-bends` enables vertical connections between successive
+legato/pitch-bend points for PU1, PU2, and WAV on both models. The default
+omits the connector code and state. A feature-disabled TRIAC build is
+byte-identical to commit `f3b7349`, with SHA-256
+`8eb107b4603c4c254ab0b3047ccd9d9d265b513793e031188190473585d24ee6`.
+The local comparison is recorded in `build/bend-feature/default-off-check.json`.
+
+All 20 native regression tests pass. The new SameBoy tests check ascending,
+descending, and full-height spans; instant legato; note restarts and inactive
+channels; all 12 ring positions and eight pixel phases; and all three tonal
+voices on CGB and DMG. NOI remains discrete. Drawing three full-height spans
+with the LCD enabled still services the 4,096-cycle audio timer, with no
+observed interrupt-service gap exceeding 4,300 CPU cycles. Rendering can
+take multiple frames; scrolling waits for completion while music continues.
+
+The same six 20-second audio comparisons were repeated with
+`--connect-pitch-bends --output build/audio-ab/native-bend-verification`.
+All six match startup timing and total song APU-write counts, and none
+reports the previous stack or memory warnings. Strict PCM equality still
+fails in all six. First differing sample indices remain as listed above
+except WOW on DMG, which first differs at 256,225. The enabled renderer can
+affect the remaining interrupt timing differences; it is not evidence of
+bit-exact playback. Full results and source/ROM hashes are in
+`build/audio-ab/native-bend-verification/report.json`.

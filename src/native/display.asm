@@ -73,6 +73,9 @@ NativeDisplayFrame::
     xor a
     ld [NativePrepareIndex],a
 .prepared_begin
+    IF DEF(NATIVE_CONNECT_PITCH_BENDS)
+        call NativeBendFrame
+    ENDC
     call WaterfallPixelPoint0
     call WaterfallPixelPoint1
     call WaterfallPixelPoint2
@@ -291,6 +294,9 @@ NativePreparation:
 INCLUDE NATIVE_PITCH_TABLES
 
 NativeSongInfoInit:
+    IF DEF(NATIVE_CONNECT_PITCH_BENDS)
+        call NativeBendInit
+    ENDC
     ; Reuse the retired percentage and unused duplicate keyboard glyphs.
     ld hl,$8170
     ld de,NativeSharpGlyph
@@ -491,3 +497,7 @@ NativeChannelGlyphs:
     ExactUIGlyph $00,$44,$64,$64,$54,$4c,$4c,$44 ; N
     ExactUIGlyph $00,$38,$44,$44,$44,$44,$44,$38 ; O
     ExactUIGlyph $00,$7c,$10,$10,$10,$10,$10,$7c ; I
+
+IF DEF(NATIVE_CONNECT_PITCH_BENDS)
+    INCLUDE "src/native/bend.asm"
+ENDC

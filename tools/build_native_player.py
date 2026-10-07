@@ -35,7 +35,7 @@ def engine_source(data,executed,bank,ranges):
     return '\n'.join(lines)+'\n'
 
 
-def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=None,lcd_delays=None,timer_state=None):
+def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=None,lcd_delays=None,timer_state=None,*,connect_pitch_bends=False):
     song_delays = song_delays or {'cgb':8220996, 'dmg':8547120}
     lcd_delays = lcd_delays or {'cgb':41700,'dmg':36960}
     timer_state = timer_state or {model:{'tima':tima,'tma':0x49,'tac':6,'if':0}
@@ -136,6 +136,8 @@ def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=
     with (work/'ui.asm').open('a') as combined:combined.write(f'\nINCLUDE "{work / "display.asm"}"\n')
     objects=[]
     flags=['-D','EXACT_WATERFALL=1','-D','EXACT_PIXEL_WATERFALL=1','-D','EXACT_DMG=1','-D','WATERFALL_WIDTH=80','-D',f'EXACT_SONG_GLYPHS="{title}"','-D',f'NATIVE_PITCH_TABLES="{work / "pitch-tables.asm"}"']
+    if connect_pitch_bends:
+        flags += ['-D','NATIVE_CONNECT_PITCH_BENDS=1']
     for source in sources:
         obj=work/(source.stem+'.o');subprocess.run(['rgbasm',*flags,'-o',str(obj),str(source)],cwd=ROOT,check=True);objects.append(obj)
     subprocess.run(['rgblink','-n',str(output.with_suffix('.sym')),'-m',str(output.with_suffix('.map')),'-o',str(output),*map(str,objects)],cwd=ROOT,check=True)
@@ -143,6 +145,7 @@ def _build_once(rom_path,profile,snapshot_prefix,output,name='SONG',song_delays=
     manifest={'architecture':'native_song_interpreter','status':'experimental_audio_equivalence_pending','song_bytes':len(song),'rom_bytes':output.stat().st_size,'engine_banks':[0,2,7],'startup_state_bytes':0x4000+254,'performance_trace_bytes':0,'duration_limit':None,'hardware':['DMG','CGB'],'kit_indices':used_kit_indices(song),'startup_delay_cpu_cycles':song_delays.copy()}
     manifest['lcd_delay_cpu_cycles']=lcd_delays.copy()
     manifest['initial_timer_state']={model:state.copy() for model,state in timer_state.items()}
+    manifest['connect_pitch_bends']=bool(connect_pitch_bends)
     output.with_suffix('.json').write_text(json.dumps(manifest,indent=2)+'\n');return manifest
 
 
@@ -206,13 +209,13 @@ def _timer_increment_count(initial,observed,tma):
     return 256-initial+observed-tma
 
 
-def build(rom_path,profile,snapshot_prefix,output,name='SONG',*,align_startup=False,runner=None,startup_traces=None):
+def build(rom_path,profile,snapshot_prefix,output,name='SONG',*,align_startup=False,runner=None,startup_traces=None,connect_pitch_bends=False):
     """Optionally align startup time, timer state, and initial LCD phase.
 
     Only pre-song hardware state and the LCD enable edge are used. No song
     writes or audio are consumed, and no playback events are scheduled.
     """
-    if not align_startup:return _build_once(rom_path,profile,snapshot_prefix,output,name)
+    if not align_startup:return _build_once(rom_path,profile,snapshot_prefix,output,name,connect_pitch_bends=connect_pitch_bends)
     output=Path(output).resolve()
     runner=Path(runner or ROOT/'build/sameboy-native-analysis').resolve()
     if not runner.is_file():raise ValueError(f'Startup alignment requires capture runner: {runner}')
@@ -226,7 +229,7 @@ def build(rom_path,profile,snapshot_prefix,output,name='SONG',*,align_startup=Fa
               'runner':str(runner),'target_ticks':targets,'target_io':target_io,
               'source_lcd_enable_ticks':lcd_targets,'passes':[],'aligned':False}
     for attempt in range(5):
-        manifest=_build_once(rom_path,profile,snapshot_prefix,output,name,delays,lcd_delays,timer_state)
+        manifest=_build_once(rom_path,profile,snapshot_prefix,output,name,delays,lcd_delays,timer_state,connect_pitch_bends=connect_pitch_bends)
         work=output.parent/(output.stem+'-native-data')/'startup-alignment'
         work.mkdir(exist_ok=True)
         def measure(model):
@@ -275,10 +278,11 @@ if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--rom',type=Path,required=True);p.add_argument('--profile',type=Path,required=True);p.add_argument('--snapshot-prefix',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--name',default='SONG')
     p.add_argument('--align-startup',action='store_true',help='Calibrate bootstrap entry to both source snapshot timestamps (does not imply audio equality)')
     p.add_argument('--runner',type=Path,default=ROOT/'build/sameboy-native-analysis')
+    p.add_argument('--connect-pitch-bends',action='store_true',help='Draw vertical waterfall connections for continuous legato/pitch bends (default: discrete points)')
     p.add_argument('--startup-trace-cgb',type=Path,help='Source trace containing FF40 writes before the CGB startup snapshot')
     p.add_argument('--startup-trace-dmg',type=Path,help='Source trace containing FF40 writes before the DMG startup snapshot')
     a=p.parse_args()
     if bool(a.startup_trace_cgb)!=bool(a.startup_trace_dmg):p.error('Supply both model startup traces together')
     traces={'cgb':a.startup_trace_cgb,'dmg':a.startup_trace_dmg} if a.startup_trace_cgb else None
     if traces and not a.align_startup:p.error('Startup traces require --align-startup')
-    print(json.dumps(build(a.rom,a.profile,a.snapshot_prefix,a.output,a.name,align_startup=a.align_startup,runner=a.runner,startup_traces=traces),indent=2))
+    print(json.dumps(build(a.rom,a.profile,a.snapshot_prefix,a.output,a.name,align_startup=a.align_startup,runner=a.runner,startup_traces=traces,connect_pitch_bends=a.connect_pitch_bends),indent=2))

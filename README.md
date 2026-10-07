@@ -61,6 +61,16 @@ Audio interrupts take priority over the display. A late screen update holds the
 previous frame. DMG omits channel text to reduce rendering work; CGB displays
 PU1, PU2, WAV, and NOI.
 
+Add `--connect-pitch-bends` to the build command to connect successive legato
+and pitch-bend points with vertical lines in the waterfall. This optional
+feature is disabled by default and works on DMG and CGB. It follows the live
+bend state of PU1, PU2, and WAV, breaking the line on an observed new note or
+a sampled inactive channel; NOI stays as discrete points. Connections span the pitches
+observed in rendered frames, including frames separated by a skipped update.
+Note events entirely between those samples cannot be reconstructed.
+The extra drawing remains interruptible and can reduce the display frame rate
+on busy songs. The same flag is available in `tools/verify_native_audio.py`.
+
 Run the native regression checks with the local inputs above available:
 
 ```sh
