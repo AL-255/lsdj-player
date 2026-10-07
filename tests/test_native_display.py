@@ -40,12 +40,14 @@ class NativeDisplayTests(unittest.TestCase):
                        for line in rom.with_suffix(".sym").read_text().splitlines()
                        if line and not line.startswith(";")
                        for address, name in [line.split()]}
+            rom_bytes = rom.read_bytes()
             # Observe both ends of rows above/below the old nine-row cutoff,
             # including the bottom edge. Stay within the harness's 32 probes.
             rows = (0, 8, 9, 17)
             columns = (0, 10)
             note_addresses = (0x9915, 0x9955, 0x9995, 0x99d5)
-            probes = [0xff40, 0xff4f, 0xcc26, 0xcc00, *note_addresses] + [
+            probes = [0xff40, 0xff4f, *range(0xff51, 0xff56),
+                      0xcc26, 0xcc00, *note_addresses] + [
                 base + row * 32 + column
                 for base in (0x9800, 0x9c00) for row in rows for column in columns
             ]
@@ -71,15 +73,35 @@ class NativeDisplayTests(unittest.TestCase):
                     swaps = 0
                     note_updates = 0
                     vram_bank = 0
+                    map_transfers = 0
                     for write in writes:
                         address = int(write["address"], 16)
                         value = int(write["value"], 16)
                         if address == 0xff4f and model == "cgb":
                             vram_bank = value & 1
+                        if started and address == 0xff55 and model == "cgb" and not vram_bank:
+                            # DMA writes bypass CPU bus callbacks. Reconstruct
+                            # the attempted tile-number copy from its actual
+                            # registers and ROM source, just as ordinary stores
+                            # below record attempted CPU writes. Actual VRAM is
+                            # independently inspected during VBlank afterward.
+                            self.assertEqual(value, 0, "Each transfer must be one short GDMA block")
+                            source = memory[0xff51] * 256 + (memory[0xff52] & 0xf0)
+                            dest = 0x8000 + (memory[0xff53] & 0x1f) * 256 + (memory[0xff54] & 0xf0)
+                            self.assertTrue(0x8280 <= dest < 0x9000 or 0x9800 <= dest < 0xa000)
+                            if dest >= 0x9800:
+                                self.assertTrue(0x4000 <= source < 0x8000)
+                                offset = int(write["rom_bank"]) * 0x4000 + source - 0x4000
+                                payload = rom_bytes[offset:offset + 16]
+                            else:
+                                self.assertEqual(source, 0xcc70)
+                                payload = bytes(16) # hidden-column clearing
+                            memory.update((dest + i, payload[i]) for i in range(16))
+                            map_transfers += dest >= 0x9800
                         if 0x8000 <= address < 0xa000 and vram_bank:
                             continue # CGB attributes share the tile-number addresses.
                         memory[address] = value
-                        if address == 0xcc00 and value:
+                        if address == 0xcc00 and value and int(write["rom_bank"]) == 5:
                             started = True
                         if started and address in note_addresses:
                             note_updates += 1
@@ -127,6 +149,7 @@ class NativeDisplayTests(unittest.TestCase):
                         for address in (0x9911, 0x9951, 0x9991, 0x99d1):
                             self.assertEqual(actual_memory[address:address + 8], bytes(8))
                     else:
+                        self.assertGreater(map_transfers, 18 * 24)
                         self.assertGreater(note_updates, 0)
                         self.assertTrue(any(actual_memory[0x8281:0x9000:2]),
                                         "CGB channel colors must use both tile bitplanes")

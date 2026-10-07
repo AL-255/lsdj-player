@@ -163,3 +163,58 @@ the existing audio-equivalence failure. Reports with source and ROM hashes:
 
 - `build/audio-ab/native-color-verification/report.json`
 - `build/audio-ab/native-color-bend-verification/report.json`
+
+## CGB rendering cost
+
+Profiling commit `5269e6b` showed that CGB colors used 2.2–2.5 times the
+display CPU cycles per committed frame of the monochrome renderer. Most
+extra work was map preparation: each cell read its tile number from VRAM,
+switched banks to read channel metadata, and switched again to write the
+palette attribute.
+
+The optimized renderer reads tile numbers from the existing ROM map table,
+prepares one attribute row in WRAM, and copies each map row with two
+16-byte CGB DMA transfers. Hidden-column clearing uses the same bounded
+transfers. Each block restores VRAM bank 0 and releases interrupts before
+the next block. The shared music engine does not write DMA registers.
+Pixel drawing skips unchanged metadata and empty-tile remapping, compares
+palette codes directly for overlap priority, and accesses each bitplane
+pair with one VRAM availability check. Tempo and channel text only redraw
+when their displayed values change.
+
+The comparison uses CGB-E at double speed, measuring seconds 8–20 after
+reset for TRIAC, WOW, and KASHIWA, with bends both disabled and enabled.
+A read-only SameBoy instruction callback measures elapsed CPU ticks,
+including VRAM waits and DMA stalls; completed WX commits count screen
+updates. IRQ entry cycles are attributed to the preceding instruction.
+Across all six runs, display cycles per committed frame fall **57.9–61.7%**.
+The resulting screen throughput is approximately the former monochrome
+renderer's throughput. Results with bends enabled:
+
+| Song | Display cycles/update before → after | Screen updates/s before → after | Idle CPU after |
+| --- | ---: | ---: | ---: |
+| TRIAC | 84,751 → 35,530 | 48.50 → 55.67 | 50.7% |
+| WOW | 82,029 → 34,513 | 40.67 → 53.42 | 45.2% |
+| KASHIWA | 77,601 → 31,848 | 57.25 → 58.42 | 60.7% |
+
+Local evidence is retained in `build/color-performance/final.json`, with
+ROM/source hashes, commands, traces, and the read-only profiling harness
+alongside it. This measures these song intervals, not worst-case hardware
+performance or an audio-equivalence guarantee.
+
+All 31 native tests pass. New DMA checks inspect actual VRAM and displayed
+colors for all twelve ring positions, both maps, every row, and every clear
+stage. With a deliberately heavy audio interrupt, 1,872 IRQs continue
+during map preparation; the maximum measured gap is 4,252 CPU cycles for
+the 4,096-cycle timer, and every IRQ sees VRAM bank 0. Status tests check
+correct text and zero VRAM writes for repeated values on both hardware
+models. Color identity, crowded-tile behavior, and the DMG display checks
+continue to pass.
+
+Both six-case 20-second audio matrices were repeated after optimization.
+Startup times and total song APU-write counts match, but all twelve strict
+PCM comparisons still fail the existing audio-equivalence requirement.
+Full results are in:
+
+- `build/audio-ab/native-color-optimized-verification/report.json`
+- `build/audio-ab/native-color-optimized-bend-verification/report.json`

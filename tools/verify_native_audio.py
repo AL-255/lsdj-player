@@ -287,6 +287,7 @@ def main() -> int:
                       (ROOT/'tools/build_native_player.py', ROOT/'tools/native_delay.py',
                        ROOT/'src/native/boot.asm', ROOT/'src/native/display.asm',
                        ROOT/'src/native/bend.asm', ROOT/'src/native/color.asm',
+                       ROOT/'src/native/color_map.asm',
                        ROOT/'src/waterfall.asm', ROOT/'src/exact_ui.asm')}, cases=[])
     for case in cases:
         result = verify_case(case, runner, args.output, args.seconds, args.sample_rate,

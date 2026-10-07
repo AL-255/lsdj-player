@@ -2,6 +2,10 @@
 ; not a precomputed pitch trace. Rendering and hidden-column preparation run
 ; once per LCD frame. CGB colors identify channels; DMG stays monochrome.
 DEF NativeFrameReady EQU $cc01
+DEF NativeBPMValid EQU $cc68
+DEF NativePreviousBPM EQU $cc69
+DEF NativePreviousNotes EQU $cc6a ; four pitch bytes; $ff means silent
+ASSERT NativePreviousNotes + 4 <= $cc70 ; CGB map DMA row buffer follows
 
 SECTION "Native live display", ROMX, BANK[5]
 NativeDisplayFrame::
@@ -98,6 +102,20 @@ NativeDisplayFrame::
     ld a,[NativePrepareIndex]
     cp WaterfallClearCount + WaterfallMapCount
     jr nc,.slice_done
+    ldh a,[$ff90]
+    or a
+    jr z,.ordinary_slice
+    ld a,[NativePrepareIndex]
+    sub WaterfallClearCount
+    jr c,.color_clear
+    call NativeColorPrepareRow
+    jr .slice_progress
+.color_clear
+    add WaterfallClearCount
+    call NativeColorClearSlice
+    jr .slice_progress
+.ordinary_slice
+    ld a,[NativePrepareIndex]
     ld hl,NativePreparation
     add a,a
     ld c,a
@@ -110,12 +128,6 @@ NativeDisplayFrame::
     push de
     jp hl
 .slice_return
-    ldh a,[$ff90]
-    or a
-    jr z,.slice_progress
-    ld a,[NativePrepareIndex]
-    sub WaterfallClearCount
-    call nc,NativeColorMapRow
 .slice_progress
     ld hl,NativePrepareIndex
     inc [hl]
@@ -251,7 +263,19 @@ NativePitchY:
     ret
 
 NativeBPM:
+    ld a,[NativeBPMValid]
+    or a
+    jr z,.changed
+    ld a,[NativePreviousBPM]
+    ld e,a
     ld a,[$c529]
+    cp e
+    ret z
+.changed
+    ld a,1
+    ld [NativeBPMValid],a
+    ld a,[$c529]
+    ld [NativePreviousBPM],a
     ld e,a
     ld d,0
     cp 40
@@ -344,6 +368,13 @@ NativePreparation:
 INCLUDE NATIVE_PITCH_TABLES
 
 NativeSongInfoInit:
+    xor a
+    ld [NativeBPMValid],a
+    ld a,$fe ; force the first sample, including silence, to render
+    ld hl,NativePreviousNotes
+    REPT 4
+        ld [hl+],a
+    ENDR
     IF DEF(NATIVE_CONNECT_PITCH_BENDS)
         call NativeBendInit
     ENDC
@@ -460,6 +491,8 @@ NativeNotes:
 .channel
     push bc
     push hl
+    call NativeNoteChanged
+    jr z,.next
     ld a,[WaterfallActive]
     and c
     jr z,.silent
@@ -511,6 +544,7 @@ NativeNotes:
     xor a
     call NativeStoreIncrement
     call NativeStoreIncrement
+    call NativeStoreIncrement
     call NativeStore
 .next
     pop hl
@@ -521,6 +555,31 @@ NativeNotes:
     sla c
     dec b
     jr nz,.channel
+    ret
+
+; The text depends only on the sampled pitch and whether the channel is on.
+; Leave unchanged labels in VRAM, including throughout long sustained notes.
+; DE points to this channel's Y; C is its active bit. Z means no redraw.
+NativeNoteChanged:
+    push bc
+    push hl
+    ld a,[WaterfallActive]
+    and c
+    ld b,$ff
+    jr z,.key
+    ld a,[de]
+    ld b,a
+.key
+    ld a,e
+    sub LOW(WaterfallPitchY)
+    add LOW(NativePreviousNotes)
+    ld l,a
+    ld h,HIGH(NativePreviousNotes)
+    ld a,[hl]
+    cp b
+    ld [hl],b
+    pop hl
+    pop bc
     ret
 
 NativeNoteNames:
@@ -558,4 +617,5 @@ ENDC
 PUSHS
 SECTION "Native channel colors", ROMX, BANK[5]
 INCLUDE "src/native/color.asm"
+INCLUDE "src/native/color_map.asm"
 POPS

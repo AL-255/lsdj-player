@@ -68,6 +68,11 @@ tile's history contains all four channels, NOI is hidden in that tile until
 the tile scrolls out and is reused; the other channel colors stay exact.
 At an identical pixel, priority is PU1, then PU2, WAV, and NOI.
 
+CGB prepares map rows and clears hidden columns with short, interruptible
+sequences of 16-byte DMA transfers. Unchanged tempo and note labels skip
+VRAM updates. The optimized color renderer uses about 58–62% fewer display
+CPU cycles per screen update on the three validation songs.
+
 Add `--connect-pitch-bends` to the build command to connect successive legato
 and pitch-bend points with vertical lines in the waterfall. This optional
 feature is disabled by default and works on DMG and CGB. It follows the live

@@ -171,12 +171,28 @@ NativeColorPixel:
     ld a,[NativeColorOldMask]
     or [hl]
     ld [NativeColorMask],a
+    ld b,a
+    ld a,[NativeColorOldMask]
+    cp b
+    jr nz,.mask_changed
+    ; Most pixels continue a channel already present in this tile. Its
+    ; palette and historical metadata then need no further work.
+    ld a,[NativeColorOldPalette]
+    ld [NativeColorPalette],a
+    jr .palette_ready
+.mask_changed
+    ld a,b
     call NativeColorPaletteForMask
     ld [NativeColorPalette],a
     ld b,a
     ld a,[NativeColorOldPalette]
     cp b
+    jr z,.metadata
+    ; There are no old pixels to translate when the first pen visits.
+    ld a,[NativeColorOldMask]
+    or a
     call nz,NativeColorRemap
+.metadata
     ld a,[NativeColorTile]
     ld l,a
     ld h,HIGH(NativeColorMetadata)
@@ -187,6 +203,7 @@ NativeColorPixel:
     ld a,[NativeColorPalette]
     cp b
     call nz,NativeColorAttributes
+.palette_ready
     ld a,[NativeColorPalette]
     dec a
     add a,a
@@ -208,16 +225,14 @@ NativeColorPixel:
     ld h,a
     ld a,[NativeColorBit]
     ld b,a
-    call NativeRead
-    ld d,a
+    call NativeColorReadPair
+    ld a,d
     and b
     ld c,0
     jr z,.low_ready
     inc c
 .low_ready
-    inc hl
-    call NativeRead
-    ld e,a
+    ld a,e
     and b
     jr z,.high_ready
     set 1,c
@@ -225,21 +240,9 @@ NativeColorPixel:
     ld a,c
     or a
     jr z,.write
-    push hl
-    push de
-    ld a,[NativeColorPalette]
-    dec a
-    add a,a
-    add a,a
-    add c
-    ld e,a
-    ld d,0
-    ld hl,NativeColorOwners
-    add hl,de
-    ld a,[NativeColorChannel]
-    cp [hl]
-    pop de
-    pop hl
+    ; Every palette assigns increasing codes in channel-priority order.
+    ld a,[NativeColorCode]
+    cp c
     jr nc,.done ; existing same/higher-priority channel wins
 .write
     ld a,[NativeColorCode]
@@ -251,8 +254,7 @@ NativeColorPixel:
     jr z,.high
     or b
 .high
-    call NativeStore
-    dec hl
+    ld e,a
     ld a,b
     cpl
     and d
@@ -260,7 +262,8 @@ NativeColorPixel:
     jr z,.low
     or b
 .low
-    call NativeStore
+    ld d,a
+    call NativeColorStorePair
 .done
     pop hl
     pop de
@@ -317,11 +320,8 @@ NativeColorRemap:
     ld a,8
     ld [NativeColorRows],a
 .row
-    call NativeRead
-    ld d,a
-    inc hl
-    call NativeRead
-    ld e,a
+    call NativeColorReadPair
+    ld a,e
     and d
     ld c,a ; old color 3 pixels
     ld a,e
@@ -332,14 +332,16 @@ NativeColorRemap:
     cpl
     and e
     ld e,a ; old color 2 pixels
-    dec hl
     ld a,[NativeColorSelectLow]
     call .select
-    call NativeStore
-    inc hl
+    push af
     ld a,[NativeColorSelectHigh]
     call .select
-    call NativeStore
+    ld e,a
+    pop af
+    ld d,a
+    call NativeColorStorePair
+    inc hl
     inc hl
     ld a,[NativeColorRows]
     dec a
@@ -443,8 +445,6 @@ NativeColorMaskPalettes:
     db 1,1,1,1,1,1,1,1,2,2,2,2,3,3,4,1
 NativeColorCodes:
     db 1,2,3,0, 1,2,0,3, 1,0,2,3, 0,1,2,3
-NativeColorOwners:
-    db $ff,0,1,2, $ff,0,1,3, $ff,0,2,3, $ff,1,2,3
 NativeColorRemapSelectors:
     ; Two three-bit selectors per old/new palette pair, low then high.
     db 5,6, 1,2, 1,4, 2,4
@@ -459,3 +459,43 @@ NativeColorPalettes:
     dw $2866,$7f68,$7f68,$7f68 ; PU1 label
     dw $2866,$559f,$559f,$559f ; PU2 label
     dw $2866,$1f3f,$1f3f,$1f3f ; NOI label
+
+; CGB runs at double speed. Read or write both adjacent bank-0 bitplanes
+; after one availability check; the final VRAM access is within 52 CPU
+; cycles of the STAT read, below the 160-cycle mode-2 safety window. Only
+; this short access is masked; waiting and all pixel arithmetic allow IRQs.
+; HL=low plane. Read returns D=low, E=high; both preserve BC and HL.
+NativeColorReadPair:
+.wait
+    di
+    ldh a,[$ff41]
+    and 2
+    jr nz,.busy
+    ld a,[hl+]
+    ld d,a
+    ld a,[hl]
+    ld e,a
+    dec hl
+    ei
+    ret
+.busy
+    ei
+    jr .wait
+
+; HL=low plane, D=low byte, E=high byte. Preserves BC, DE and HL.
+NativeColorStorePair:
+.wait
+    di
+    ldh a,[$ff41]
+    and 2
+    jr nz,.busy
+    ld a,d
+    ld [hl+],a
+    ld a,e
+    ld [hl],a
+    dec hl
+    ei
+    ret
+.busy
+    ei
+    jr .wait
