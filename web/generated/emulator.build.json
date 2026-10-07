@@ -4,7 +4,7 @@
   "module": "emulator.mjs",
   "wasm": "emulator.wasm",
   "module_sha256": "7b56464eff4fdd0fd4d1bff7be2522861ba15ddcb7b345d4b3507d25ea987fba",
-  "wasm_sha256": "2bcd9e0a01ecb01f5ab8306a3793932d22417090aad2806da1196bbcf5cd3b53",
+  "wasm_sha256": "bfd8c7d62ed1f7a007f25c737c5760b1748f43feb484c02a9da52ccf4a6dcc0d",
   "compiler": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.5-git",
   "boot_roms": {
     "cgb": {
@@ -37,5 +37,6 @@
     "lsdj_snapshot_song",
     "lsdj_snapshot_io"
   ],
-  "host_source_sha256": "0861b99d1a2a9f1890be21ffa95b29caa80cedc8a67d9c34f9e35a57016c5810"
+  "host_source_sha256": "0861b99d1a2a9f1890be21ffa95b29caa80cedc8a67d9c34f9e35a57016c5810",
+  "build_source_sha256": "93f81196d7c85a8c5e53371224de131729f1ff4638de1ce6b19ee919b0d5c184"
 }

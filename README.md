@@ -11,6 +11,19 @@ have regression fixes, but the native interpreter has not passed bit-exact
 audio A/B verification against LSDj. The earlier recorded-replay results do
 not establish audio equivalence for this native interpreter.
 
+## Browser exporter
+
+Open **[LSDj Player](https://al-255.github.io/lsdj-player/)** to generate a player
+without installing build tools. Choose your LSDj 9.4.2 ROM and `.sav`, select
+working memory or a saved project, choose the display options, and download
+the `.gb` file. Custom kits already installed in your ROM are retained.
+
+Conversion runs locally in a browser worker; your ROM and save never upload
+to a server. Each export is checked on both DMG and CGB before download.
+The site includes downloadable source and licenses; it does not distribute
+LSDj ROMs, sample kits, songs, or captured startup data. See
+[web release details](docs/web-release.md) for local previews and rebuilding.
+
 ## Dependencies
 
 RGBDS, Python 3.10+, clang, make, git, and a locally supplied LSDj 9.4.2 ROM.

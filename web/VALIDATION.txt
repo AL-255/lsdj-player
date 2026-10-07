@@ -1,0 +1,39 @@
+LSDj Player browser exporter — experimental release
+
+Supported input: LSDj 9.4.2 (including custom sample kits installed in the ROM),
+plus a 64 or 128 KiB LSDj save. Other engine versions are rejected.
+
+The converter prepares every selected song independently on DMG-B and CGB-E.
+Before download it checks each model's song-entry time, timer state, and LCD
+phase against the supplied LSDj ROM. It does not embed a recorded performance.
+
+Validation uses the pinned SameBoy emulator, revision
+c458e7c5d2d350fb37a1931c40da9f758d28d240. The browser and native startup capture
+tools produce identical TRIAC WRAM, HRAM, song, I/O, registers, and startup ticks
+on both models. Save parsing matches the Python tool across 102 local files
+and 223 selected songs, including older save revisions and fragmented saves.
+
+TRIAC, WOW, and KASHIWA export successfully with all four combinations of pitch
+range and bend connections: 12 ROMs, checked independently on both models.
+All 24 startup checks match. The website contains none of these test songs.
+
+Sixteen automated browser-module tests pass, covering malformed saves,
+engine validation, timing alignment, checksums, and sample-bank preservation.
+Fresh 20-second playback checks of the 24 browser-generated model/option
+combinations match song-entry timing and song APU-write counts, without stack
+or memory warnings. All 24 still fail strict PCM equality.
+
+Known limitation: the native player is NOT yet bit-exact with LSDj.
+This release must not be treated as an exact audio
+archive or proof of hardware fidelity. A passing export check confirms startup
+alignment, not equality of every audio sample or every future passage.
+
+Audio interrupts take priority over drawing. Busy songs can skip visual frames.
+DMG omits channel labels; CGB uses PU1, PU2, WAV, and NOI. The lower-range option
+hides NOI only from the plot; noise audio remains active. Pitch-bend connections
+can cost additional drawing time and are disabled by default in the exporter.
+
+Project source, build instructions, full validation notes, and licenses are
+included in generated/player-source.tar.gz. All conversion is local; the
+public site serves only static code, templates, open-source emulator assets,
+documentation, and the source archive.
