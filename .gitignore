@@ -1,0 +1,25 @@
+.DS_Store
+/build/
+/analysis/
+/rom/
+/tests/corpus/
+__pycache__/
+*.pyc
+
+# Generated ROMs, recordings, screenshots, binaries and test downloads.
+*.gb
+*.gbc
+*.sav
+*.lsdsng
+*.lsdprj
+*.wav
+*.ppm
+*.png
+*.mp4
+*.zip
+*.7z
+*.kit
+*.bin
+*.o
+*.a
+*.dylib

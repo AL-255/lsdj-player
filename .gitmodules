@@ -1,0 +1,12 @@
+[submodule "reference/lsdpack"]
+	path = reference/lsdpack
+	url = https://github.com/jkotlinski/lsdpack.git
+[submodule "reference/SameBoy"]
+	path = reference/SameBoy
+	url = https://github.com/LIJI32/SameBoy.git
+[submodule "reference/lsdpatch"]
+	path = reference/lsdpatch
+	url = https://github.com/jkotlinski/lsdpatch.git
+[submodule "reference/liblsdj"]
+	path = reference/liblsdj
+	url = https://github.com/stijnfrishert/liblsdj.git
