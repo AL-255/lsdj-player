@@ -15,6 +15,7 @@ __pycache__/
 *.wav
 *.ppm
 *.png
+!/web/player-cgb.png
 *.mp4
 *.zip
 *.7z

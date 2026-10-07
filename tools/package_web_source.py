@@ -38,6 +38,9 @@ SOURCE_MANIFEST.json records all source-file SHA-256 hashes. SameBoy's exported
 SOURCE_MANIFEST.json records its pinned upstream revision and source hashes;
 no Git checkout is required to rebuild this archive.
 
+web/player-cgb.png is the website's native-resolution CGB emulator screenshot.
+Its PNG hash and capture provenance are recorded in web/player-cgb.json.
+
 ## Build the public website
 
 Install Python 3.10 or later, GNU Make, a host C compiler, RGBDS (including
@@ -99,7 +102,8 @@ def python_dependencies(root: Path) -> set[str]:
 
 
 def project_files(root: Path) -> dict[str, bytes]:
-    names = {"LICENSE", "THIRD_PARTY.md", "src/exact_ui.asm", "src/waterfall.asm"}
+    names = {"LICENSE", "THIRD_PARTY.md", "src/exact_ui.asm", "src/waterfall.asm",
+             "web/player-cgb.png", "web/player-cgb.json"}
     names |= python_dependencies(root)
     names.update(str(path.relative_to(root)) for path in (root / "src/native").glob("*.asm"))
     names.update(str(path.relative_to(root)) for path in (root / "web").iterdir()

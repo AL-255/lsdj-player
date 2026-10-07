@@ -3,114 +3,71 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101017">
-  <meta name="description" content="Make a standalone Game Boy player from your LSDj project, with a live piano roll. Your files stay in your browser.">
-  <title>LSDj Player — Put your music in motion</title>
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Build a standalone DMG/CGB player ROM from your LSDj ROM and save. Files are processed locally.">
+  <title>LSDj Player</title>
   <link rel="stylesheet" href="./style.css">
   <script type="module" src="./app.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#export-form">Skip to the exporter</a>
-  <div class="page-shell">
-    <header class="site-header">
-      <a class="brand" href="./" aria-label="LSDj Player home">
-        <svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true"><path d="M3 19V9h4v10zm6 5V4h4v20zm6-8v-4h4v4zm6 5V7h4v14z" fill="currentColor"/></svg>
-        <span>LSDj <span class="brand-light">Player</span></span>
-      </a>
-      <div class="header-links"><span class="experimental-badge">Experimental</span><a href="./generated/player-source.tar.gz" download>Source <span aria-hidden="true">↓</span></a></div>
-    </header>
-
-    <main class="workspace">
-      <section class="intro" aria-labelledby="page-title">
-        <p class="eyebrow"><span></span> A NEW VIEW OF YOUR MUSIC</p>
-        <h1 id="page-title">From tracker<br>to <em>player.</em></h1>
-        <p class="intro-copy">Give your LSDj project its own Game Boy ROM, with a live piano roll that follows every note.</p>
-
-        <figure class="preview-figure">
-          <div class="preview-topline"><span><i class="status-dot"></i> PIANO ROLL</span><span>DMG + CGB</span></div>
-          <div class="preview-screen">
-            <svg id="player-preview" viewBox="0 0 320 288" role="img" aria-labelledby="preview-title preview-description">
-              <title id="preview-title">Illustration of the standalone player</title>
-              <desc id="preview-description">Colored note trails on the left and a fixed song information panel on the right.</desc>
-              <defs><clipPath id="plot-clip"><rect x="0" y="0" width="144" height="288"/></clipPath></defs>
-              <rect width="320" height="288" fill="#201c32"/>
-              <g id="preview-grid" stroke="#343044" stroke-width="1"></g>
-              <g id="preview-notes" clip-path="url(#plot-clip)" fill="none" stroke-width="2" stroke-linecap="square"></g>
-              <g id="preview-keys"></g>
-              <rect x="160" width="160" height="288" fill="#2b253e"/>
-              <g class="screen-text" fill="#e6d9f6">
-                <text id="preview-song" x="177" y="31" font-size="15" letter-spacing="2">YOURSONG</text>
-                <text x="177" y="59" font-size="10" fill="#a59ab7">STANDALONE PLAYER</text>
-                <text x="177" y="104" font-size="12" fill="#a59ab7">BPM</text><text x="248" y="104" font-size="16">140</text>
-                <text x="177" y="133" font-size="11" fill="#a59ab7">MODE</text><text x="248" y="133" font-size="13">CGB</text>
-                <g font-size="13"><text x="177" y="177" fill="#75dee5">PU1</text><text x="248" y="177" fill="#75dee5">C-4</text>
-                <text x="177" y="200" fill="#f290c7">PU2</text><text x="248" y="200" fill="#f290c7">G-3</text>
-                <text x="177" y="223" fill="#a7d888">WAV</text><text x="248" y="223" fill="#a7d888">C-2</text>
-                <text x="177" y="246" fill="#e9cb79">NOI</text><text x="248" y="246" fill="#e9cb79">---</text></g>
-              </g>
-              <path d="M177 270h125" stroke="#51465f"/>
-            </svg>
-          </div>
-          <figcaption><span>Illustrative preview</span><span class="channel-legend"><i class="pu1"></i><i class="pu2"></i><i class="wav"></i><i class="noi" id="noise-legend"></i></span></figcaption>
-        </figure>
-        <p class="audio-note"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-4v12l-4-4H3zM13 7c2 1.5 2 4.5 0 6M15 4c4 3 4 9 0 12"/></svg>Music comes first. Busy passages can skip a screen update to keep audio running.</p>
-      </section>
-
-      <section class="export-panel" aria-labelledby="export-title">
-        <div class="panel-heading"><p class="eyebrow">THE ROM EXPORTER</p><h2 id="export-title">Make it yours.</h2><p>Bring your ROM and save. We’ll take it from there.</p></div>
-        <form id="export-form" novalidate>
-          <fieldset id="source-fields" class="form-section">
-            <legend><span class="step">01</span> Choose your files</legend>
-            <div class="upload-group" data-kind="rom">
-              <input type="file" id="rom-file" accept=".gb,.gbc" hidden>
-              <button class="upload-box" type="button" id="rom-picker" aria-controls="rom-file" aria-describedby="rom-hint rom-error">
-                <span class="file-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h10l3 3v15H5V3zM8 3v7h8V3M8 15h8v6H8z"/></svg></span>
-                <span class="upload-copy"><span class="file-label">LSDj 9.4.2 ROM</span><span class="file-name" id="rom-file-name">Choose a .gb file</span></span>
-                <span class="upload-action" aria-hidden="true">+</span>
-              </button>
-              <p class="field-hint" id="rom-hint">Your own copy of LSDj 9.4.2. Custom sample kits are supported.</p>
-              <p id="rom-error" class="field-error" role="alert" hidden></p>
-            </div>
-            <div class="upload-group" data-kind="save">
-              <input type="file" id="save-file" accept=".sav" hidden>
-              <button class="upload-box" type="button" id="save-picker" aria-controls="save-file" aria-describedby="save-hint save-error">
-                <span class="file-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5zM8 3v6h8V3M8 14h8v7H8zM13 4v3"/></svg></span>
-                <span class="upload-copy"><span class="file-label">LSDj save</span><span class="file-name" id="save-file-name">Choose a .sav file</span></span>
-                <span class="upload-action" aria-hidden="true">+</span>
-              </button>
-              <p class="field-hint" id="save-hint">64 or 128 KiB. You can drop files onto either box.</p>
-              <p id="save-error" class="field-error" role="alert" hidden></p>
-            </div>
-          </fieldset>
-
-          <fieldset id="project-fields" class="form-section">
-            <legend><span class="step">02</span> Pick a project</legend>
-            <div class="project-grid">
-              <div class="field project-field"><label for="project">Project</label><select id="project" disabled aria-describedby="project-hint"><option value="">Load a save to choose</option></select></div>
-              <div class="field title-field"><label for="rom-title">ROM title <span id="title-count">0 / 8</span></label><input id="rom-title" name="title" maxlength="8" placeholder="YOURSONG" autocomplete="off" spellcheck="false" aria-describedby="title-hint" aria-label="ROM title, up to eight characters"></div>
-            </div>
-            <p class="field-hint" id="project-hint">Working memory and saved projects will appear here.</p>
-            <p class="field-hint title-hint" id="title-hint">Titles support letters, numbers, spaces, and . + - ?</p>
-          </fieldset>
-
-          <fieldset id="display-fields" class="form-section display-section">
-            <legend><span class="step">03</span> Set the view</legend>
-            <label class="option-row" for="low-range"><span><span class="option-title">Lower pitch range</span><span class="option-description">C1–B6 at 2× height. Hides noise in the plot.</span></span><input id="low-range" type="checkbox" checked><span class="switch" aria-hidden="true"></span></label>
-            <label class="option-row" for="connect-bends"><span><span class="option-title">Connect pitch bends</span><span class="option-description">Join legato and slides with continuous lines.</span></span><input id="connect-bends" type="checkbox"><span class="switch" aria-hidden="true"></span></label>
-          </fieldset>
-
-          <div id="build-progress" class="build-progress" hidden aria-live="polite" aria-atomic="true"><div><span id="progress-message">Preparing your player…</span><span id="progress-percent"></span></div><progress id="progress-bar" max="100" aria-label="Player generation progress"></progress></div>
-          <div id="build-error" class="build-error" role="alert" hidden></div>
-          <button id="generate" class="primary-button" type="submit" disabled><span id="generate-label">Generate player</span><span aria-hidden="true">↗</span></button>
-          <p id="ready-hint" class="ready-hint">Choose both files to get started.</p>
-          <div id="download-panel" class="download-panel" hidden aria-live="polite"><div class="download-heading"><span class="done-icon" aria-hidden="true">✓</span><span><strong>Your player is ready.</strong><span id="download-description"></span></span></div><a id="download" class="primary-button" href="#" download><span>Download .gb</span><span aria-hidden="true">↓</span></a><button id="build-again" class="text-button" type="button">Generate again</button></div>
-        </form>
-        <div class="local-note"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="9" width="12" height="8" rx="2"/><path d="M6.5 9V6a3.5 3.5 0 0 1 7 0v3"/></svg><p>Everything happens in your browser.<br><span>Your ROM and save stay on this device.</span></p></div>
-        <p class="experimental-note">An experimental player: audio is not yet bit-exact with LSDj. <a href="./VALIDATION.txt" target="_blank" rel="noreferrer">Read the test results <span aria-hidden="true">↗</span></a></p>
-      </section>
-    </main>
-    <footer class="site-footer"><span>A different way to see your chiptunes.</span><div><a href="https://github.com/AL-255/lsdj-player" target="_blank" rel="noreferrer">GitHub ↗</a><a href="./generated/player-source.tar.gz">Download source</a><a href="./LICENSES.txt">Credits &amp; licenses</a></div></footer>
-  </div>
-  <noscript><p class="noscript-notice">Enable JavaScript to build a player in your browser. Your files are processed locally.</p></noscript>
+  <header>
+    <h1>LSDj Player</h1>
+    <p>Create a standalone Game Boy player ROM.</p>
+  </header>
+  <main>
+    <form id="export-form" novalidate aria-label="Player ROM exporter">
+      <div class="field">
+        <label for="rom-file">LSDj 9.4.2 ROM</label>
+        <input type="file" id="rom-file" accept=".gb,.gbc" aria-describedby="rom-hint rom-error">
+        <p class="hint" id="rom-hint">Custom sample kits are taken from this ROM.</p>
+        <p id="rom-error" class="error" role="alert" hidden></p>
+      </div>
+      <div class="field">
+        <label for="save-file">Save (.sav)</label>
+        <input type="file" id="save-file" accept=".sav" aria-describedby="save-hint save-error">
+        <p class="hint" id="save-hint">64 or 128 KiB.</p>
+        <p id="save-error" class="error" role="alert" hidden></p>
+      </div>
+      <div class="project-fields">
+        <div class="field">
+          <label for="project">Project</label>
+          <select id="project" disabled aria-describedby="project-hint"><option value="">Choose a save first</option></select>
+        </div>
+        <div class="field">
+          <label for="rom-title">Title (8 characters)</label>
+          <input type="text" id="rom-title" maxlength="8" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+      <p class="hint" id="project-hint"></p>
+      <fieldset>
+        <legend>Display</legend>
+        <label class="option"><input id="low-range" type="checkbox" checked> Lower range: C1–B6 at 2× height, hide NOI</label>
+        <label class="option"><input id="connect-bends" type="checkbox"> Connect pitch bends</label>
+      </fieldset>
+      <div id="build-progress" hidden aria-live="polite">
+        <p><span id="progress-message"></span> <span id="progress-percent"></span></p>
+        <progress id="progress-bar" max="100" aria-label="ROM generation progress"></progress>
+      </div>
+      <p id="build-error" class="error" role="alert" hidden></p>
+      <button id="generate" type="submit" disabled>Generate ROM</button>
+      <p id="ready-hint" class="hint">Choose a ROM and save to continue.</p>
+      <div id="download-panel" hidden aria-live="polite">
+        <a id="download" class="button" download>Download .gb</a>
+        <p id="download-description" class="hint"></p>
+        <button id="build-again" class="secondary" type="button">Generate again</button>
+      </div>
+      <p class="note">Files stay in your browser. Output supports DMG and CGB.</p>
+      <p class="note">Experimental: audio is not yet bit-exact with LSDj. <a href="./VALIDATION.txt">Test results</a>.</p>
+    </form>
+    <figure>
+      <img src="./player-cgb.png" alt="Actual SameBoy CGB screenshot of the player running TRIAC, with colored notes in the piano roll." width="160" height="144">
+      <figcaption>SameBoy (CGB) · <a href="https://defensemech.com/songs/">TRIAC by Defense Mechanism</a></figcaption>
+    </figure>
+  </main>
+  <footer>
+    <a href="./generated/player-source.tar.gz" download>Source</a>
+    <a href="./LICENSES.txt">Licenses</a>
+  </footer>
+  <noscript><p>JavaScript is required to generate a ROM locally.</p></noscript>
 </body>
 </html>

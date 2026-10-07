@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_FILES = {
     "index.html", "app.js", "converter.js", "worker.js", "player-core.js", "save-format.js",
     "style.css", "emulator.c", "compatibility.json", "LICENSES.txt", "VALIDATION.txt",
+    "player-cgb.png", "player-cgb.json",
     "generated/templates.json", "generated/emulator.mjs", "generated/emulator.wasm",
     "generated/emulator.build.json", "generated/SameBoy.LICENSE.txt",
     "generated/player-source.tar.gz", "generated/player-source.json",
@@ -99,6 +100,23 @@ def check_emulator(root, web):
                         "lsdj_snapshot_hram", "lsdj_snapshot_song", "lsdj_snapshot_io"}
     require(required_exports <= set(data.get("exports", [])), "Missing emulator conversion API")
     return data
+
+
+def check_screenshot(web):
+    data = json_file(web / "player-cgb.json")
+    require(data.get("format") == 1 and data.get("image") == "player-cgb.png",
+            "Invalid player screenshot metadata")
+    require(data.get("model") == "cgb" and data.get("source_type") == "emulator-framebuffer",
+            "Player screenshot must identify its CGB emulator capture")
+    require((data.get("width"), data.get("height")) == (160, 144),
+            "Player screenshot must retain the native 160×144 framebuffer")
+    path = web / "player-cgb.png"
+    header = path.read_bytes()[:33]
+    require(len(header) == 33 and header[:8] == b"\x89PNG\r\n\x1a\n"
+            and header[8:16] == b"\x00\x00\x00\x0dIHDR", "Invalid player screenshot PNG")
+    dimensions = (int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big"))
+    require(dimensions == (160, 144), "Player screenshot has been resized or cropped")
+    require(sha256(path) == data.get("sha256"), "Player screenshot differs from its capture metadata")
 
 
 def check_archive(root, web):
@@ -188,6 +206,7 @@ def check(root):
     require(not any(path.is_symlink() for path in web.rglob("*")), "Public assets contain a symlink")
     variants = check_templates(root, web)
     check_emulator(root, web)
+    check_screenshot(web)
     source = check_archive(root, web)
     check_static_links(web)
     return {"verified": True, "public_assets": len(actual), "template_variants": variants,

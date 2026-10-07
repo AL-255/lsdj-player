@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "image": "player-cgb.png",
+  "model": "cgb",
+  "source_type": "emulator-framebuffer",
+  "width": 160,
+  "height": 144,
+  "sha256": "4b8263759f6efa9650f803703b8d7313b635d7da8ee69180b4d6422d55364ed0",
+  "sameboy_revision": "c458e7c5d2d350fb37a1931c40da9f758d28d240",
+  "requested_ticks_8mhz": 167772160,
+  "song": "TRIAC",
+  "song_author": "Defense Mechanism",
+  "song_source": "https://defensemech.com/songs/",
+  "low_range": true,
+  "connect_pitch_bends": false,
+  "description": "Unaltered 160x144 framebuffer captured by the SameBoy native harness after 20 seconds; lossless PPM-to-PNG conversion."
+}

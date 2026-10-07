@@ -30,6 +30,12 @@ and CGB-E, captures the startup state, and injects it into the player. It then
 checks and calibrates each model's song-entry tick, timer state, and LCD phase.
 Conversion fails visibly if either hardware model cannot be prepared.
 
+The page uses the computer's light/dark preference and standard file inputs.
+Its example image is an unmodified 160×144 SameBoy CGB framebuffer of TRIAC,
+captured after 20 seconds with the lower-range view and discrete pitch points.
+The PNG is displayed at 2× size with nearest-neighbor pixels; its capture
+provenance and checksum are in `web/player-cgb.json`.
+
 The release was exercised with TRIAC, WOW, and KASHIWA in all four display
 configurations. All 12 exports aligned on both models, and all 24 independent
 20-second playback checks matched song-entry time and song APU-write counts.
