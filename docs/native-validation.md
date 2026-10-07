@@ -316,3 +316,28 @@ Local reports are in:
 - `build/audio-ab/native-scroll-low-bends/report.json`
 
 Generated ROMs and measurement artifacts are in `build/hardware-scroll/`.
+
+Using the same read-only profiler over seconds 8–20, all three songs and
+bend settings show lower display cycles per committed update at 80-pixel width:
+
+| Hardware / pitch range | Display cycles/update reduction |
+| --- | ---: |
+| DMG, full range | 35.0–40.4% |
+| DMG, lower range | 33.7–37.8% |
+| CGB, full range / four channel colors | 41.4–51.2% |
+| CGB, lower range / fixed three-channel palette | 4.3–7.3% |
+
+The full-range baseline is `34d91bf` (also unchanged in `c51fbe4`). The
+lower-range baseline is the aligned, isolated 80-pixel width probe from
+`c51fbe4`, described in `build/width-cost/comparison.json`; its keyboard borrows
+two title tiles solely for that cost measurement. The production implementation
+preserves the full title using the sprite layout above. These improvements
+combine hardware scrolling, model-specific calls, and the simpler sprite layout.
+
+With bends enabled, DMG WOW improves from 24.7 to 26.9 screen updates/s in
+both ranges. Other song intervals are mostly audio-limited; reduced display
+work chiefly increases idle time. CGB throughput remains about 53.4–58.4
+updates/s. These are song-interval measurements, not worst-case guarantees.
+Commands, source/ROM hashes, and the 24 profiles are recorded in
+`build/hardware-scroll/performance.json`; baseline comparisons are in
+`build/hardware-scroll/comparison.json`.

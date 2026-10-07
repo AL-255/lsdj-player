@@ -77,6 +77,11 @@ columns wrap independently. CGB additionally updates palette attributes when
 needed and clears recycled tile data with short DMA blocks. Unchanged tempo
 and note labels skip VRAM updates.
 
+On the three validation songs, display CPU cycles per update fall about
+34–40% on DMG, 41–51% on full-range CGB, and 4–7% on low-range CGB compared
+with the previous 80-pixel renderer. Both bend settings are included; these
+measurements cover seconds 8–20 after reset, not worst-case loads.
+
 Add `--connect-pitch-bends` to the build command to connect successive legato
 and pitch-bend points with vertical lines in the waterfall. This optional
 feature is disabled by default and works on DMG and CGB. It follows the live
