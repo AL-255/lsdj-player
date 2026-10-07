@@ -5,9 +5,10 @@ the checkpoint requested during development. Its shared Game Boy assembly
 engine interprets native song data; ROM size does not grow with playback duration.
 The same image detects DMG/CGB hardware and initializes the appropriate palette.
 
-**Experimental:** this checkpoint still has known audio and scrolling problems.
-It has not passed bit-exact A/B verification. This commit preserves the requested
-rollback point; it does not claim that those issues are fixed.
+**Experimental:** the piano-roll map preparation and DMG sprite corruption
+have regression fixes, but the native interpreter has not passed bit-exact
+audio A/B verification against LSDj. The earlier recorded-replay results do
+not establish audio equivalence for this native interpreter.
 
 ## Dependencies
 
@@ -39,7 +40,7 @@ python3 tools/build_native_player.py \
   --profile build/audio-ab/native-triac-execution.tsv \
   --snapshot-prefix build/native-engine/triac \
   --output build/native-engine/TRIAC-native.gb \
-  --name TRIAC
+  --name TRIAC --align-startup
 ```
 
 `src/native/boot.asm` hosts the shared sequencer and interrupt handling.
@@ -48,6 +49,28 @@ The builder adapts the shared display primitives in `src/exact_ui.asm` and
 `src/waterfall.asm`; the previous recorded playback implementation is excluded
 from this repository. `tools/recover_native_engine.py` can independently verify
 that recovered engine banks assemble byte-for-byte to the locally supplied ROM.
+Bank 7 is retained for the shared tempo-command helper and its lookup tables.
+`--align-startup` uses the snapshot JSON timestamps, I/O state, and local capture
+harness to match the song's startup point and timer state on each model.
+Supplying both `--startup-trace-cgb` and `--startup-trace-dmg` with source traces
+containing `--trace-address ff40` also aligns the initial LCD phase. The native
+audio verifier automates these steps. No recorded performance is embedded in
+the ROM.
+
+Audio interrupts take priority over the display. A late screen update holds the
+previous frame. DMG omits channel text to reduce rendering work; CGB displays
+PU1, PU2, WAV, and NOI.
+
+Run the native regression checks with the local inputs above available:
+
+```sh
+python3 -m unittest discover -s tests -p 'test_native*.py' -v
+```
+
+The display check exercises DMG and CGB map swaps through the complete ring.
+The delay checks verify cycle counts and exclude the DMG OAM-corruption address
+range. See [native validation](docs/native-validation.md) for the separate
+LSDj/native audio comparisons and their remaining failures.
 
 ## Download test cases
 

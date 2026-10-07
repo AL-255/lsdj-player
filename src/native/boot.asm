@@ -3,6 +3,7 @@
 DEF NativeHardware EQU $cfff
 DEF NativeLastFrame EQU $cffe
 DEF NativePrepareIndex EQU $cc00
+DEF NativeFrameReady EQU $cc01
 
 SECTION "Native interpreter startup", ROM0[$0b54]
 NativeStart::
@@ -89,25 +90,22 @@ NativeStart::
     call ExactUIInit
     call WaterfallBegin
     NativeSongDelay
+    ; The CGB speed-switch bootstrap enables interrupts. Re-establish the
+    ; startup critical section before enabling any IRQ source on either model.
+    di
     xor a
     ld [NativePrepareIndex],a
+    ld [NativeFrameReady],a
     ld [$cba2],a ; tracker font animation is not part of the player screen
     ld [$cbd1],a ; prevent tracker DMA before song initialization as well
     ld [$c903],a ; tracker viewport scrolling is not part of the player
     ld a,2
     ld [$2000],a
     ldh [$ff8e],a
-    ld a,$49
-    ldh [$ff06],a
-    ld a,[NativeHardware]
-    cp $11
-    ld a,$90
-    jr nz,.timer_ready
-    ld a,$aa
-.timer_ready
-    ldh [$ff05],a
-    ld a,6
-    ldh [$ff07],a
+    ; Generated per-model timer values preserve the source startup state.
+    ; Pending non-VBlank requests belong to music initialization; an old
+    ; display request must not reset TIMA before the sequencer starts.
+    NativeTimerInit
     ld a,1
     ldh [$ffff],a
     ei
@@ -131,6 +129,7 @@ NativeStart::
     ld [$2000],a
     ldh [$ff8e],a
     ei
+    call NativeDisplayScroll
     call NativeDisplayFrame
     di
     ld a,2
@@ -140,31 +139,41 @@ NativeStart::
     jr .loop
 
 NativeCopy:
+    ld a,b
+    or c
+    ret z
+    ld a,c
+    or a
+    jr nz,.byte
+    ; Full SRAM/WRAM blocks use a page copy. Unrolling sixteen bytes keeps
+    ; the bootstrap short enough to reproduce early song-start snapshots.
+.page
+    ld c,16
+.chunk
+    REPT 16
+        ld a,[hl+]
+        ld [de],a
+        inc de
+    ENDR
+    dec c
+    jr nz,.chunk
+    dec b
+    jr nz,.page
+    xor a
+    ret
+.byte
     ld a,[hl+]
     ld [de],a
     inc de
     dec bc
     ld a,b
     or c
-    jr nz,NativeCopy
+    jr nz,.byte
     ret
 
-; Commit window motion at VBlank entry, before visible scanlines can start.
-; The original vector already saved AF/HL; preserve its remaining registers.
-NativeVBlank::
-    push bc
-    push de
-    ldh a,[$ff8e]
-    push af
-    ld a,5
-    ld [$2000],a
-    ldh [$ff8e],a
-    call WaterfallPixelScroll
-    pop af
-    ld [$2000],a
-    ldh [$ff8e],a
-    pop de
-    pop bc
-    jp $183a
+; The original VBlank handler owns audio scheduling without any display hook.
+; Export its entry for capture breakpoints and state inspection.
+DEF NativeVBlank EQU $183a
+EXPORT NativeVBlank
 NativeBootstrapEnd:
 ASSERT NativeBootstrapEnd <= $1306

@@ -1,12 +1,19 @@
 ; Four live oscillator pens. Read the interpreter's post-effect frequencies,
 ; not a precomputed pitch trace. Rendering and hidden-column preparation run
 ; once per LCD frame and retain the existing monochrome/SGB screen design.
+DEF NativeFrameReady EQU $cc01
+
 SECTION "Native live display", ROMX, BANK[5]
 NativeDisplayFrame::
     push af
     push bc
     push de
     push hl
+    ; A missed VBlank can leave another main-loop iteration pending. Do not
+    ; render the same phase twice while its completed frame awaits commit.
+    ld a,[NativeFrameReady]
+    or a
+    jp nz,.done
     ldh a,[$ff26]
     and $0f
     ld [WaterfallActive],a
@@ -70,12 +77,13 @@ NativeDisplayFrame::
     call WaterfallPixelPoint1
     call WaterfallPixelPoint2
     call WaterfallPixelPoint3
-    ; Three small slices per frame prepare the next hidden column/map.
-    ld b,3
+    ; The DMG-compatible renderer uses one map row per slice. Four slices
+    ; per frame finish all 12 clears and 18 rows before the eight-pixel wrap.
+    ld b,(WaterfallClearCount + WaterfallMapCount + 7) / 8
 .prepare
     push bc
     ld a,[NativePrepareIndex]
-    cp 21
+    cp WaterfallClearCount + WaterfallMapCount
     jr nc,.slice_done
     ld hl,NativePreparation
     add a,a
@@ -96,8 +104,87 @@ NativeDisplayFrame::
     dec b
     jr nz,.prepare
     call NativeBPM
-    call NativeNotes
+    ; DMG spends its smaller display budget on the piano roll.
+    ldh a,[$ff90]
+    or a
+    call nz,NativeNotes
+    ld a,1
+    ld [NativeFrameReady],a
+.done
     pop hl
+    pop de
+    pop bc
+    pop af
+    ret
+
+; Scroll is foreground work. The engine's original VBlank handler has
+; already scheduled audio, and music interrupts may preempt preparation.
+; If audio leaves no safe VBlank window, keep the completed frame pending:
+; NativeDisplayFrame then skips drawing until this commit can succeed.
+NativeDisplayScroll::
+    push af
+    push bc
+    push de
+    ld a,[NativeFrameReady]
+    or a
+    jr z,.done
+    ldh a,[$ff44]
+    sub 144
+    cp 8
+    jr nc,.done
+    ld a,[WaterfallPixelPhase]
+    inc a
+    ld b,a
+    cp 8
+    jr c,.fine
+    ld a,[NativePrepareIndex]
+    cp WaterfallClearCount + WaterfallMapCount
+    jr c,.done
+    ld b,0
+    ld c,87
+    ld a,[WaterfallNextLCD]
+    ld d,a
+    ld a,[WaterfallNextHead]
+    ld e,a
+    jr .commit
+.fine
+    ld a,87
+    sub b
+    ld c,a
+    ld a,[WaterfallLCD]
+    ld d,a
+    ld a,[WaterfallHead]
+    ld e,a
+.commit
+    ; An audio interrupt may have used the rest of VBlank while the values
+    ; were computed. Recheck with interrupts masked only for the two stores.
+    ; LY 144..151 leaves two full blank lines of margin on either hardware.
+    di
+    ldh a,[$ff44]
+    sub 144
+    cp 8
+    jr nc,.late
+    ld a,b
+    or a
+    jr nz,.window
+    ld a,d
+    ldh [$ff40],a
+.window
+    ld a,c
+    ldh [$ff4b],a
+    ei
+    ld a,b
+    ld [WaterfallPixelPhase],a
+    ld a,d
+    ld [WaterfallLCD],a
+    ld a,e
+    ld [WaterfallHead],a
+    xor a
+    ld [NativeFrameReady],a
+    jr .done
+.late
+    ei
+.done
     pop de
     pop bc
     pop af
@@ -160,16 +247,19 @@ NativeBPM:
 
 ; Interrupts remain available while waiting for accessible VRAM.
 NativeStore:
-    di
     push af
 .wait
+    di
     ldh a,[$ff41]
     and 2
-    jr nz,.wait
+    jr nz,.busy
     pop af
     ld [hl],a
     ei
     ret
+.busy
+    ei
+    jr .wait
 NativeStoreIncrement:
     call NativeStore
     inc hl
@@ -177,22 +267,25 @@ NativeStoreIncrement:
 
 ; A mode-3 read returns $ff and would paint a whole byte instead of a pixel.
 NativeRead:
-    di
     push af
 .wait
+    di
     ldh a,[$ff41]
     and 2
-    jr nz,.wait
+    jr nz,.busy
     pop af
     ld a,[hl]
     ei
     ret
+.busy
+    ei
+    jr .wait
 
 NativePreparation:
-    FOR part,12
+    FOR part,WaterfallClearCount
         dw WaterfallClear{d:part}
     ENDR
-    FOR part,9
+    FOR part,WaterfallMapCount
         dw WaterfallMap{d:part}
     ENDR
 INCLUDE NATIVE_PITCH_TABLES
@@ -226,6 +319,47 @@ NativeSongInfoInit:
     pop bc
     dec b
     jr nz,.row
+    ldh a,[$ff90]
+    or a
+    jr nz,.cgb_labels
+    ; The monochrome screen omits all four channel-status labels/values.
+    xor a
+    FOR channel,4
+        ld hl,$9911 + channel * 64
+        REPT 3
+            ld [hl+],a
+        ENDR
+    ENDR
+    jr .labels_ready
+.cgb_labels
+    ; The shared bank-0 tile space is full. CGB's second VRAM bank supplies
+    ; the five extra label letters without taking piano-roll pattern tiles.
+    ld a,1
+    ldh [$ff4f],a
+    ld hl,$8000
+    ld de,NativeChannelGlyphs
+    ld bc,80
+    call .copy
+    ld a,8 ; tile-data bank 1, existing palette 0
+    ld [$9991],a
+    ld [$9993],a
+    ld [$99d1],a
+    ld [$99d2],a
+    ld [$99d3],a
+    xor a
+    ldh [$ff4f],a
+    ld [$9991],a ; W in VRAM bank 1
+    ld a,8
+    ld [$9992],a ; A in VRAM bank 0
+    ld a,1
+    ld [$9993],a ; V
+    inc a
+    ld [$99d1],a ; N
+    inc a
+    ld [$99d2],a ; O
+    inc a
+    ld [$99d3],a ; I
+.labels_ready
     ld hl,$98d1
     ld a,5
     ld [hl+],a
@@ -350,3 +484,10 @@ NativeSharpGlyph:
 NativeExtraGlyphs:
     db 0,0,$3c,$3c,$40,$40,$40,$40,$5c,$5c,$44,$44,$3c,$3c,0,0
     db 0,0,$44,$44,$44,$44,$7c,$7c,$44,$44,$44,$44,$44,$44,0,0
+
+NativeChannelGlyphs:
+    ExactUIGlyph $00,$44,$44,$44,$54,$54,$6c,$44 ; W
+    ExactUIGlyph $00,$44,$44,$44,$44,$44,$28,$10 ; V
+    ExactUIGlyph $00,$44,$64,$64,$54,$4c,$4c,$44 ; N
+    ExactUIGlyph $00,$38,$44,$44,$44,$44,$44,$38 ; O
+    ExactUIGlyph $00,$7c,$10,$10,$10,$10,$10,$7c ; I
