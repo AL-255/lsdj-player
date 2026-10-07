@@ -1,0 +1,41 @@
+{
+  "sameboy_revision": "c458e7c5d2d350fb37a1931c40da9f758d28d240",
+  "source_url": "https://github.com/LIJI32/SameBoy",
+  "module": "emulator.mjs",
+  "wasm": "emulator.wasm",
+  "module_sha256": "7b56464eff4fdd0fd4d1bff7be2522861ba15ddcb7b345d4b3507d25ea987fba",
+  "wasm_sha256": "2bcd9e0a01ecb01f5ab8306a3793932d22417090aad2806da1196bbcf5cd3b53",
+  "compiler": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.5-git",
+  "boot_roms": {
+    "cgb": {
+      "sha256": "f767b8e7e510a255f81328c89dba6e0c996b370e1bc86aebb8584a7da47a5bba",
+      "bytes": 2304
+    },
+    "dmg": {
+      "sha256": "6f64da4cecd7e54e2f928eb3e3ba7810a7a567d0d247cc71737d1771e073a916",
+      "bytes": 256
+    }
+  },
+  "license": "SameBoy.LICENSE.txt",
+  "contains_lsdj_rom_or_song_data": false,
+  "exports": [
+    "malloc",
+    "free",
+    "lsdj_init",
+    "lsdj_destroy",
+    "lsdj_run_frames",
+    "lsdj_set_buttons",
+    "lsdj_set_auto_buttons",
+    "lsdj_read",
+    "lsdj_pc",
+    "lsdj_rom_bank",
+    "lsdj_ticks",
+    "lsdj_error",
+    "lsdj_metadata",
+    "lsdj_snapshot_wram",
+    "lsdj_snapshot_hram",
+    "lsdj_snapshot_song",
+    "lsdj_snapshot_io"
+  ],
+  "host_source_sha256": "0861b99d1a2a9f1890be21ffa95b29caa80cedc8a67d9c34f9e35a57016c5810"
+}

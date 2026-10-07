@@ -1,0 +1,13 @@
+{
+  "version": "9.4.2",
+  "romSize": 1048576,
+  "engineBanks": {
+    "0": "c15e51181068cbd9eeecd36c7b7b318fa887a6cb4561db29c10635d4a2f414cb",
+    "2": "86adae4e02e56c40545cddafc52edc12c2052f37b222fe3110eeb49bcdb21ebc",
+    "7": "01b2c778bf62d3ec17092306d2158c0bd1a2a34a90667967419d7de9a568584d"
+  },
+  "bank0IgnoredHeader": [
+    308,
+    336
+  ]
+}
