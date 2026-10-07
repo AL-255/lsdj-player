@@ -111,11 +111,17 @@ def check_screenshot(web):
     require(isinstance(data.get("song"), str) and data["song"].strip(), "Missing screenshot song title")
     require(type(data.get("requested_ticks_8mhz")) is int and data["requested_ticks_8mhz"] > 0,
             "Missing screenshot capture time")
+    require(data.get("capture_mode") == "latest-completed-frame",
+            "Player screenshots must come from a completed frame")
     variants = data.get("variants")
     require(isinstance(variants, dict) and set(variants) == set(SCREENSHOT_VARIANTS),
             "Player screenshots must cover all four display option combinations")
     for name, variant in variants.items():
         require(isinstance(variant, dict), f"Invalid player screenshot metadata: {name}")
+        captured = variant.get("captured_ticks_8mhz")
+        require(type(captured) is int and 0 < captured <= data["requested_ticks_8mhz"]
+                and data["requested_ticks_8mhz"] - captured < 140448,
+                f"Screenshot must use the latest completed frame at the requested time: {name}")
         filename = f"player-cgb-{name}.png"
         require(variant.get("image") == filename, f"Invalid player screenshot image: {name}")
         require(variant.get("low_range") is name.startswith("low-")
@@ -133,6 +139,8 @@ def check_screenshot(web):
                 f"Player screenshot differs from its capture metadata: {name}")
     require(len({variant["sha256"] for variant in variants.values()}) == len(SCREENSHOT_VARIANTS),
             "Player screenshot variants must show distinct captures for their display options")
+    require(len({variant["captured_ticks_8mhz"] for variant in variants.values()}) == 1,
+            "Player screenshot variants must show the same completed frame")
 
 
 def check_archive(root, web):

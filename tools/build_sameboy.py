@@ -90,7 +90,7 @@ def main():
                 "flags": flags, "model": "CGB-E", "timebase_hz": 8388608,
                 "supported_models": ["CGB-E", "DMG-B"],
                 "host_source_sha256": hashlib.sha256((ROOT / "host/sameboy_capture.c").read_bytes()).hexdigest(),
-                "capture_features": ["audio_wav", "apu_writes", "apu_reads", "fixed_clock_pitch", "dmg_model"] +
+                "capture_features": ["audio_wav", "apu_writes", "apu_reads", "fixed_clock_pitch", "dmg_model", "completed_frame_screen"] +
                                     (["sweep_cpu_advances"] if args.observe_sweeps else []),
                 "sweep_observation": args.observe_sweeps,
                 "observation_sources": {name: {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}

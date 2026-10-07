@@ -32,12 +32,15 @@ Conversion fails visibly if either hardware model cannot be prepared.
 
 The page uses the computer's light/dark preference and standard file inputs.
 The preview switches immediately when either display checkbox changes, using
-four actual 160×144 SameBoy CGB captures of WOW. All four show the same moment,
-24 seconds from reset, during descending WAV pitch bends and a rising PU2
+four actual 160×144 SameBoy CGB captures of WOW. All four show the same completed
+frame immediately before 24 seconds from reset, during descending WAV pitch bends and a rising PU2
 melody. They demonstrate both pitch ranges and discrete versus connected
 bend points; NOI appears only in the full-range plot. The PNGs are displayed
 at 2× size with nearest-neighbor pixels. Shared capture provenance and each
-variant's options and checksum are in `web/player-cgb.json`.
+variant's options and checksum are in `web/player-cgb.json`. The capture tool
+copies the completed framebuffer in SameBoy's VBlank callback, so stopping
+emulation mid-scanline cannot combine parts of two frames in the PNG. This does
+not extend the capture's tick limit or change playback timing.
 
 The release was exercised with TRIAC, WOW, and KASHIWA in all four display
 configurations. All 12 exports aligned on both models, and all 24 independent

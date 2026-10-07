@@ -8,7 +8,7 @@
   "song": "WOW",
   "song_author": "Defense Mechanism",
   "song_source": "https://defensemech.com/songs/",
-  "description": "Four unmodified SameBoy CGB-E framebuffers captured at the same time during descending WAV pitch bends and a rising PU2 melody. Lossless PNG conversion; no resized or redrawn pixels.",
+  "description": "Four unmodified completed SameBoy CGB-E frames from the same 24-second playback point during descending WAV pitch bends and a rising PU2 melody. Each frame is copied in the VBlank callback; lossless PNG conversion, no resized or redrawn pixels.",
   "variants": {
     "full-points": {
       "image": "player-cgb-full-points.png",
@@ -16,10 +16,12 @@
       "connect_pitch_bends": false,
       "width": 160,
       "height": 144,
-      "sha256": "e6522e65448553c2c9e9472f107ca8ec0a3ea150e46da3308c9e0493d8f80e4c",
-      "captured_ticks_8mhz": 201326592,
+      "sha256": "1efae5693e1b3e64852a606a07d958b540412e334c2e8d0c5b68edcb21257a1f",
+      "captured_ticks_8mhz": 201227560,
       "rom_sha256": "ca3e15d7e584f85d01b07cd993294a2b63ba23f1c2da918b858cabd1c0d53e7c",
-      "source_ppm_sha256": "adfd0a87d970c0a890b6d4a91eded39f32ef81fa1c1e01ceb7dcb4a50b099c38"
+      "source_ppm_sha256": "dbe3a62ffcbc9e5f589d32c42f12adb359c11ead758e5868420e2bdfdfdda1e8",
+      "captured_frame": 1434,
+      "emulation_ticks_8mhz": 201326592
     },
     "full-bends": {
       "image": "player-cgb-full-bends.png",
@@ -27,10 +29,12 @@
       "connect_pitch_bends": true,
       "width": 160,
       "height": 144,
-      "sha256": "82231709bc2bc18f3a4f91b0977c794970396c9bfdf7c65cfe1c9004c15edd2e",
-      "captured_ticks_8mhz": 201326592,
+      "sha256": "a3763f40ae097aaee2ab1e40b93322dc891f83827e5a07c129615741546aae18",
+      "captured_ticks_8mhz": 201227560,
       "rom_sha256": "cfb7c0703a83c8d54ccb5fe197a916cb7ae877b00b25a8e4c6daef508f34a266",
-      "source_ppm_sha256": "e1dbe76cac5489b3c75ef3fd8e4a5a3930ef13fc9b1ff4573def9c590c6ed7d5"
+      "source_ppm_sha256": "60b9bdea58e0851accbe8919bbb072dd8ec3d1ffe1987107f4385d56dcc82825",
+      "captured_frame": 1434,
+      "emulation_ticks_8mhz": 201326592
     },
     "low-points": {
       "image": "player-cgb-low-points.png",
@@ -38,10 +42,12 @@
       "connect_pitch_bends": false,
       "width": 160,
       "height": 144,
-      "sha256": "9533f6c17a4bcfb5d996f396694104546dbfc2cbf063ee14897622034ff67458",
-      "captured_ticks_8mhz": 201326592,
+      "sha256": "3b2fb1549f0126dee418c4406a6053035d7122292581af1fc25ece470aeb0ddc",
+      "captured_ticks_8mhz": 201227560,
       "rom_sha256": "b8b0a80c1fb81825dc5de1222cdfe6932dacb8cb3cc4c909eae96a1f4ce3b95c",
-      "source_ppm_sha256": "ba8de1cd539e7c3b8a6d449ba8d1a69b62bdc36a5722e94f32e7b6aac0996221"
+      "source_ppm_sha256": "34a78724904e481638504919636ab227ea4f5f5a13a1cdbbc661f4b4ab178141",
+      "captured_frame": 1434,
+      "emulation_ticks_8mhz": 201326592
     },
     "low-bends": {
       "image": "player-cgb-low-bends.png",
@@ -49,10 +55,13 @@
       "connect_pitch_bends": true,
       "width": 160,
       "height": 144,
-      "sha256": "09adcc44891cb5986b99c13e152eb30f3e025432a15be3b5c77252067b73f489",
-      "captured_ticks_8mhz": 201326592,
+      "sha256": "b059a7440a59c19aa21aedf58531b1716d554108d0250ffb2ae105b66797db67",
+      "captured_ticks_8mhz": 201227560,
       "rom_sha256": "21343c5850ff7918cc80dd35103e149e7fc40031037c60b3be31e39e82ae119c",
-      "source_ppm_sha256": "b66863db40550ddb6dc64fa63556e9ded3beb9d7062a12517e5af8f7abfd17e9"
+      "source_ppm_sha256": "c609e3c7d47cdcd500467b5c350947f47d73a33c86c4aaa7acaf5e5352baafe0",
+      "captured_frame": 1434,
+      "emulation_ticks_8mhz": 201326592
     }
-  }
+  },
+  "capture_mode": "latest-completed-frame"
 }

@@ -40,6 +40,10 @@ typedef struct {
     unsigned advance_cpu_cycles;
     bool in_cpu_advance;
     uint64_t pitch_step, pitch_origin, next_pitch_tick, pitch_snapshots;
+    const uint32_t *pixels;
+    uint32_t *screen_pixels;
+    uint64_t screen_tick, screen_frame;
+    bool screen_skip_partial;
     uint32_t *execution_hits;
     uint16_t previous_pc;
     uint8_t previous_opcode;
@@ -214,9 +218,22 @@ static void pitch_due(GB_gameboy_t *gb) {
     }
 }
 static void vblank(GB_gameboy_t *gb, GB_vblank_type_t type) {
-    (void)type;
     Capture *c = GB_get_user_data(gb);
     ++c->frames;
+    // The live output buffer is overwritten one scanline at a time. Preserve
+    // a presented frame so an arbitrary tick limit cannot mix two frames.
+    if (c->screen_pixels && type != GB_VBLANK_TYPE_REPEAT && type != GB_VBLANK_TYPE_SKIPPED_FRAME) {
+        // Save states omit the host pixel buffer. A state loaded during
+        // scanout cannot supply a whole image until the following frame.
+        if (c->screen_skip_partial && type == GB_VBLANK_TYPE_NORMAL_FRAME) {
+            c->screen_skip_partial = false;
+            return;
+        }
+        c->screen_skip_partial = false;
+        memcpy(c->screen_pixels, c->pixels, 160 * 144 * sizeof(*c->pixels));
+        c->screen_tick = gb->absolute_debugger_ticks;
+        c->screen_frame = c->frames;
+    }
 }
 static void event_log(GB_gameboy_t *gb, const char *name) {
     Capture *c = GB_get_user_data(gb);
@@ -307,6 +324,7 @@ static void usage(void) {
          "  [--model cgb|dmg] (default CGB-E; dmg selects original DMG-B hardware)\n"
          "WAV is stereo signed 16-bit PCM. Trace timestamps are\n"
          "exact 8 MHz ticks; scheduled frames each mean 140448 ticks from reset.\n"
+         "Screenshots save the latest completed frame without extending the tick limit.\n"
          "--force-cgb changes only the loaded cartridge header bit/checksum in memory.\n"
          "Randomness, joypad bouncing, clock throttling, and analog interference are off.");
 }
@@ -450,6 +468,9 @@ int main(int argc, char **argv) {
     GB_set_write_memory_callback(gb, bus_write);
     if (c.reads) GB_set_read_memory_callback(gb, bus_read);
     uint32_t pixels[160 * 144] = {0};
+    uint32_t screen_pixels[160 * 144];
+    c.pixels = pixels;
+    c.screen_pixels = screen ? screen_pixels : NULL;
     GB_set_border_mode(gb, GB_BORDER_NEVER);
     GB_set_pixels_output(gb, pixels);
     GB_set_rgb_encode_callback(gb, rgb);
@@ -464,6 +485,8 @@ int main(int argc, char **argv) {
     if (GB_load_boot_rom(gb, boot)) fail("Cannot load SameBoy boot ROM (run tools/build_sameboy.py)");
     if (sav && GB_load_battery(gb, sav)) fail("Cannot load save file");
     if (state_in && GB_load_state(gb, state_in)) fail("Cannot load state");
+    c.screen_skip_partial = screen && state_in && (GB_safe_read_memory(gb, 0xff40) & 0x80) &&
+                            GB_safe_read_memory(gb, 0xff44) < 144;
     if (execution_path) {
         c.execution_hits = calloc(64 * 0x4000, sizeof(uint32_t));
         if (!c.execution_hits) fail("Cannot allocate execution profile");
@@ -506,9 +529,10 @@ int main(int argc, char **argv) {
         if (c.samples > (UINT32_MAX - 36) / 4) fail("WAV exceeds RIFF limit");
     }
     if (screen) {
+        if (!c.screen_frame) fail("No completed frame available for screenshot; increase the tick limit");
         FILE *f = fopen(screen, "wb"); if (!f) fail("Cannot open screenshot");
         fputs("P6\n160 144\n255\n", f);
-        for (unsigned i = 0; i < 160 * 144; ++i) { fputc(pixels[i] >> 16, f); fputc(pixels[i] >> 8, f); fputc(pixels[i], f); }
+        for (unsigned i = 0; i < 160 * 144; ++i) { fputc(screen_pixels[i] >> 16, f); fputc(screen_pixels[i] >> 8, f); fputc(screen_pixels[i], f); }
         if (ferror(f) || fclose(f)) fail("Screenshot write failed");
     }
     if (native_dump) {
@@ -561,14 +585,15 @@ int main(int argc, char **argv) {
            "\"first_trigger_tick\":%" PRIu64 ",\"writes\":%" PRIu64 ",\"apu_writes\":%" PRIu64 ","
            "\"triggers\":%" PRIu64 ",\"audio_energy\":%" PRIu64 ",\"peak\":%u,"
            "\"double_speed\":%s,\"boot_rom_finished\":%s,\"pc\":%u,"
-           "\"pitch_snapshots\":%" PRIu64 ",\"pitch_step_ticks\":%" PRIu64 ",\"pitch_origin_tick\":%" PRIu64 "}\n",
+           "\"pitch_snapshots\":%" PRIu64 ",\"pitch_step_ticks\":%" PRIu64 ",\"pitch_origin_tick\":%" PRIu64 ","
+           "\"screen_ticks_8mhz\":%" PRIu64 ",\"screen_frame\":%" PRIu64 "}\n",
            SAMEBOY_REVISION, model_name, GB_is_cgb_in_cgb_mode(gb) ? "true" : "false", header_cgb,
            force_cgb ? "true" : "false", rate, filter, filter, limit_frames, vblank_buttons ? "true" : "false",
            c.frames, gb->absolute_debugger_ticks,
            initial_ticks, c.boot_boundary_tick, c.samples, c.first_nonzero_sample, c.first_trigger_tick,
            c.writes, c.apu_writes, c.triggers, c.audio_energy, c.peak,
            gb->cgb_double_speed ? "true" : "false", gb->boot_rom_finished ? "true" : "false", gb->pc,
-           c.pitch_snapshots, c.pitch_step, c.pitch_origin);
+           c.pitch_snapshots, c.pitch_step, c.pitch_origin, c.screen_tick, c.screen_frame);
     GB_dealloc(gb);
     return 0;
 }
