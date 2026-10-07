@@ -13,6 +13,19 @@ const fileSize = (bytes) => `${Number((bytes / 1024).toFixed(1))} KiB`;
 const cleanName = (value) => String(value ?? '').replace(/\0/g, '').trim();
 const defaultTitle = (value) => cleanName(value).toUpperCase().replace(/[^A-Z0-9 .+?\-]/g, '').slice(0, 8) || 'MYSONG';
 
+function updatePreview() {
+  const lowRange = $('low-range').checked;
+  const connectBends = $('connect-bends').checked;
+  const preview = $('player-preview');
+  preview.src = `./player-cgb-${lowRange ? 'low' : 'full'}-${connectBends ? 'bends' : 'points'}.png`;
+  preview.alt = `SameBoy CGB example: ${lowRange ? 'lower' : 'full'} pitch range, pitch-bend connections ${connectBends ? 'on' : 'off'}.`;
+}
+
+// Keep checkbox changes immediate once the four small captures are cached.
+for (const range of ['full', 'low']) {
+  for (const bends of ['points', 'bends']) new Image().src = `./player-cgb-${range}-${bends}.png`;
+}
+
 function clearOutput() {
   if (state.outputUrl) URL.revokeObjectURL(state.outputUrl);
   state.outputUrl = null;
@@ -152,6 +165,7 @@ titleInput.addEventListener('input', () => {
 });
 for (const id of ['low-range', 'connect-bends']) {
   $(id).addEventListener('change', () => {
+    updatePreview();
     clearOutput();
     clearBuildError();
     refreshAvailability();
@@ -221,4 +235,5 @@ window.addEventListener('pagehide', () => {
 });
 
 updateTitle();
+updatePreview();
 refreshAvailability();

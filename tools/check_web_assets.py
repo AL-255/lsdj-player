@@ -12,17 +12,17 @@ import re
 import tarfile
 from urllib.parse import unquote, urlsplit
 
-from package_web_source import ARCHIVE_ROOT, REVISION, project_files, safe_name
+from package_web_source import ARCHIVE_ROOT, REVISION, SCREENSHOT_VARIANTS, project_files, safe_name
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_FILES = {
     "index.html", "app.js", "converter.js", "worker.js", "player-core.js", "save-format.js",
     "style.css", "emulator.c", "compatibility.json", "LICENSES.txt", "VALIDATION.txt",
-    "player-cgb.png", "player-cgb.json",
+    "player-cgb.json",
     "generated/templates.json", "generated/emulator.mjs", "generated/emulator.wasm",
     "generated/emulator.build.json", "generated/SameBoy.LICENSE.txt",
     "generated/player-source.tar.gz", "generated/player-source.json",
-}
+} | {f"player-cgb-{variant}.png" for variant in SCREENSHOT_VARIANTS}
 PATCH_RANGES = ((0x42, 0x45), (0x100, 0x104), (0xb54, 0x1306), (0x14000, 0x18000))
 HEX_HASH = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -104,19 +104,35 @@ def check_emulator(root, web):
 
 def check_screenshot(web):
     data = json_file(web / "player-cgb.json")
-    require(data.get("format") == 1 and data.get("image") == "player-cgb.png",
-            "Invalid player screenshot metadata")
+    require(data.get("format") == 2, "Invalid player screenshot metadata")
     require(data.get("model") == "cgb" and data.get("source_type") == "emulator-framebuffer",
             "Player screenshot must identify its CGB emulator capture")
-    require((data.get("width"), data.get("height")) == (160, 144),
-            "Player screenshot must retain the native 160×144 framebuffer")
-    path = web / "player-cgb.png"
-    header = path.read_bytes()[:33]
-    require(len(header) == 33 and header[:8] == b"\x89PNG\r\n\x1a\n"
-            and header[8:16] == b"\x00\x00\x00\x0dIHDR", "Invalid player screenshot PNG")
-    dimensions = (int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big"))
-    require(dimensions == (160, 144), "Player screenshot has been resized or cropped")
-    require(sha256(path) == data.get("sha256"), "Player screenshot differs from its capture metadata")
+    require(data.get("sameboy_revision") == REVISION, "Unexpected screenshot emulator revision")
+    require(isinstance(data.get("song"), str) and data["song"].strip(), "Missing screenshot song title")
+    require(type(data.get("requested_ticks_8mhz")) is int and data["requested_ticks_8mhz"] > 0,
+            "Missing screenshot capture time")
+    variants = data.get("variants")
+    require(isinstance(variants, dict) and set(variants) == set(SCREENSHOT_VARIANTS),
+            "Player screenshots must cover all four display option combinations")
+    for name, variant in variants.items():
+        require(isinstance(variant, dict), f"Invalid player screenshot metadata: {name}")
+        filename = f"player-cgb-{name}.png"
+        require(variant.get("image") == filename, f"Invalid player screenshot image: {name}")
+        require(variant.get("low_range") is name.startswith("low-")
+                and variant.get("connect_pitch_bends") is name.endswith("-bends"),
+                f"Player screenshot options do not match its variant: {name}")
+        require((variant.get("width"), variant.get("height")) == (160, 144),
+                f"Player screenshot must retain the native 160×144 framebuffer: {name}")
+        path = web / filename
+        header = path.read_bytes()[:33]
+        require(len(header) == 33 and header[:8] == b"\x89PNG\r\n\x1a\n"
+                and header[8:16] == b"\x00\x00\x00\x0dIHDR", f"Invalid player screenshot PNG: {name}")
+        dimensions = (int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big"))
+        require(dimensions == (160, 144), f"Player screenshot has been resized or cropped: {name}")
+        require(sha256(path) == variant.get("sha256"),
+                f"Player screenshot differs from its capture metadata: {name}")
+    require(len({variant["sha256"] for variant in variants.values()}) == len(SCREENSHOT_VARIANTS),
+            "Player screenshot variants must show distinct captures for their display options")
 
 
 def check_archive(root, web):

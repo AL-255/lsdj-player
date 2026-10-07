@@ -20,6 +20,7 @@ import tarfile
 ROOT = Path(__file__).resolve().parents[1]
 REVISION = "c458e7c5d2d350fb37a1931c40da9f758d28d240"
 ARCHIVE_ROOT = "lsdj-player-source"
+SCREENSHOT_VARIANTS = ("full-points", "full-bends", "low-points", "low-bends")
 SAMEBOY_ROOTS = ("Core", "BootROMs", "LICENSE", "Makefile", "version.mk")
 TOOL_ROOTS = ("build_web_emulator.py", "build_web_templates.py", "build_native_player.py",
               "package_web_source.py", "check_web_assets.py", "save_format.py")
@@ -38,8 +39,9 @@ SOURCE_MANIFEST.json records all source-file SHA-256 hashes. SameBoy's exported
 SOURCE_MANIFEST.json records its pinned upstream revision and source hashes;
 no Git checkout is required to rebuild this archive.
 
-web/player-cgb.png is the website's native-resolution CGB emulator screenshot.
-Its PNG hash and capture provenance are recorded in web/player-cgb.json.
+web/player-cgb-*.png are the website's four native-resolution CGB emulator
+screenshots, one per display option combination. Their PNG hashes and shared
+capture provenance are recorded in web/player-cgb.json.
 
 ## Build the public website
 
@@ -103,7 +105,8 @@ def python_dependencies(root: Path) -> set[str]:
 
 def project_files(root: Path) -> dict[str, bytes]:
     names = {"LICENSE", "THIRD_PARTY.md", "src/exact_ui.asm", "src/waterfall.asm",
-             "web/player-cgb.png", "web/player-cgb.json"}
+             "web/player-cgb.json"}
+    names.update(f"web/player-cgb-{variant}.png" for variant in SCREENSHOT_VARIANTS)
     names |= python_dependencies(root)
     names.update(str(path.relative_to(root)) for path in (root / "src/native").glob("*.asm"))
     names.update(str(path.relative_to(root)) for path in (root / "web").iterdir()

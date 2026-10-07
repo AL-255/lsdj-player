@@ -1015,11 +1015,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ========================================================================
-Example screenshot
+Example screenshots
 ========================================================================
 
-player-cgb.png: unmodified SameBoy CGB framebuffer showing TRIAC by Defense
-Mechanism. Song source: https://defensemech.com/songs/
+player-cgb-*.png: four unmodified SameBoy CGB framebuffers showing WOW by
+Defense Mechanism. Song source: https://defensemech.com/songs/
 The source song is distributed under CC BY-SA 4.0:
 https://creativecommons.org/licenses/by-sa/4.0/
 Capture details are in player-cgb.json. No ROM, save, or sample kit is included.

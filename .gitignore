@@ -15,7 +15,10 @@ __pycache__/
 *.wav
 *.ppm
 *.png
-!/web/player-cgb.png
+!/web/player-cgb-full-points.png
+!/web/player-cgb-full-bends.png
+!/web/player-cgb-low-points.png
+!/web/player-cgb-low-bends.png
 *.mp4
 *.zip
 *.7z
